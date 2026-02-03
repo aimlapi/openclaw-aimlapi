@@ -353,11 +353,18 @@ export function formatAssistantErrorText(
 
   const provider = msg.provider?.toLowerCase();
   const isAimlapiProvider = provider === "aimlapi" || raw.toLowerCase().includes("aimlapi");
+  
   if (isAimlapiProvider && isAuthErrorMessage(raw)) {
     return (
       "🔑 It looks like your AI/ML API key is missing or invalid. " +
       "Do you already have a key? If not, open https://aimlapi.com/app/keys/, " +
       "sign up/subscribe, then paste the key into the bot."
+      
+  if (isMissingToolCallInputError(raw)) {
+    return (
+      "Session history looks corrupted (tool call input missing). " +
+      "Use /new to start a fresh session. " +
+      "If this keeps happening, reset the session or delete the corrupted session transcript."
     );
   }
 
@@ -476,6 +483,11 @@ const ERROR_PATTERNS = {
   ],
 } as const;
 
+const TOOL_CALL_INPUT_MISSING_RE =
+  /tool_(?:use|call)\.(?:input|arguments).*?(?:field required|required)/i;
+const TOOL_CALL_INPUT_PATH_RE =
+  /messages\.\d+\.content\.\d+\.tool_(?:use|call)\.(?:input|arguments)/i;
+
 const IMAGE_DIMENSION_ERROR_RE =
   /image dimensions exceed max allowed size for many-image requests:\s*(\d+)\s*pixels/i;
 const IMAGE_DIMENSION_PATH_RE = /messages\.(\d+)\.content\.(\d+)\.image/i;
@@ -514,6 +526,13 @@ export function isBillingErrorMessage(raw: string): boolean {
       value.includes("payment") ||
       value.includes("plan"))
   );
+}
+
+export function isMissingToolCallInputError(raw: string): boolean {
+  if (!raw) {
+    return false;
+  }
+  return TOOL_CALL_INPUT_MISSING_RE.test(raw) || TOOL_CALL_INPUT_PATH_RE.test(raw);
 }
 
 export function isBillingAssistantError(msg: AssistantMessage | undefined): boolean {
