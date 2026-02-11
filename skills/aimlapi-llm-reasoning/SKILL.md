@@ -1,6 +1,9 @@
 ---
 name: aimlapi-llm-reasoning
 description: Run AIMLAPI LLM and reasoning workflows through chat completions with retries, structured outputs, and explicit User-Agent headers. Use when Codex needs scripted prompting/reasoning calls against AIMLAPI models.
+env:
+  - AIMLAPI_API_KEY
+primaryEnv: AIMLAPI_API_KEY
 ---
 
 # AIMLAPI LLM + Reasoning

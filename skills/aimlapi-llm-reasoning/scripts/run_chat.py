@@ -19,7 +19,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", required=True, help="Model reference")
     parser.add_argument("--system", default=None, help="System message")
     parser.add_argument("--user", required=True, help="User message")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="AIMLAPI base URL")
     parser.add_argument("--extra-json", default=None, help="Extra JSON to merge into payload")
     parser.add_argument("--apikey-file", default=None, help="Path to a file containing the API key")
     parser.add_argument("--timeout", type=int, default=120, help="Request timeout in seconds")
@@ -35,7 +34,10 @@ def load_extra(extra_json: str | None) -> dict[str, Any]:
     if not extra_json:
         return {}
     try:
-        return json.loads(extra_json)
+        data = json.loads(extra_json)
+        # Security: Whitelist allowed extra fields
+        allowed = {"reasoning", "temperature", "max_tokens", "top_p", "response_format", "stop"}
+        return {k: v for k, v in data.items() if k in allowed}
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Invalid --extra-json: {exc}") from exc
 
@@ -113,7 +115,7 @@ def main() -> None:
         "messages": messages,
         **load_extra(args.extra_json),
     }
-    url = f"{args.base_url.rstrip('/')}/chat/completions"
+    url = f"{DEFAULT_BASE_URL.rstrip('/')}/chat/completions"
     response = request_json(
         url,
         payload,
