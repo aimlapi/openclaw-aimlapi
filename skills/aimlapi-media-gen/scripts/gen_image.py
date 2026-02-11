@@ -22,7 +22,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--size", default="1024x1024", help="Image size, e.g., 1024x1024")
     parser.add_argument("--count", type=int, default=1, help="Number of images to generate")
     parser.add_argument("--out-dir", default="./out/images", help="Output directory")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="AIMLAPI base URL")
     parser.add_argument("--extra-json", default=None, help="Extra JSON to merge into the payload")
     parser.add_argument("--timeout", type=int, default=120, help="Request timeout in seconds")
     parser.add_argument("--output-format", default="png", help="File extension for outputs (no dot)")
@@ -38,7 +37,10 @@ def load_extra(extra_json: str | None) -> dict[str, Any]:
     if not extra_json:
         return {}
     try:
-        return json.loads(extra_json)
+        data = json.loads(extra_json)
+        # Security: Whitelist allowed extra fields
+        allowed = {"quality", "style", "response_format", "user"}
+        return {k: v for k, v in data.items() if k in allowed}
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Invalid --extra-json: {exc}") from exc
 
@@ -136,7 +138,7 @@ def main() -> None:
         **load_extra(args.extra_json),
     }
 
-    url = f"{args.base_url.rstrip('/')}/images/generations"
+    url = f"{DEFAULT_BASE_URL.rstrip('/')}/images/generations"
     response = request_json(
         url,
         payload,

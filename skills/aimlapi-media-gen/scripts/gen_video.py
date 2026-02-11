@@ -22,7 +22,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt", required=True, help="Text prompt for the video")
     parser.add_argument("--model", default="google/veo-3.1-t2v-fast", help="Video-capable model")
     parser.add_argument("--out-dir", default="./out/videos", help="Output directory")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="AIMLAPI base URL")
     parser.add_argument("--extra-json", default=None, help="Extra JSON to merge into create payload")
     parser.add_argument("--apikey-file", default=None, help="Path to a file containing the API key")
     parser.add_argument("--timeout", type=int, default=120, help="HTTP request timeout in seconds")
@@ -39,7 +38,10 @@ def load_extra(extra_json: str | None) -> dict[str, Any]:
     if not extra_json:
         return {}
     try:
-        return json.loads(extra_json)
+        data = json.loads(extra_json)
+        # Security: Whitelist allowed extra fields
+        allowed = {"duration", "fps", "resolution", "aspect_ratio", "negative_prompt"}
+        return {k: v for k, v in data.items() if k in allowed}
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Invalid --extra-json: {exc}") from exc
 
@@ -88,7 +90,7 @@ def request_json(
 
 def create_generation(args: argparse.Namespace, api_key: str) -> dict[str, Any]:
     payload = {"model": args.model, "prompt": args.prompt, **load_extra(args.extra_json)}
-    url = f"{args.base_url.rstrip('/')}/video/generations"
+    url = f"{DEFAULT_BASE_URL.rstrip('/')}/video/generations"
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -107,7 +109,7 @@ def create_generation(args: argparse.Namespace, api_key: str) -> dict[str, Any]:
 
 def get_generation(args: argparse.Namespace, api_key: str, generation_id: str) -> dict[str, Any]:
     params = urllib.parse.urlencode({"generation_id": generation_id})
-    url = f"{args.base_url.rstrip('/')}/video/generations?{params}"
+    url = f"{DEFAULT_BASE_URL.rstrip('/')}/video/generations?{params}"
     req = urllib.request.Request(
         url,
         headers={

@@ -1,6 +1,9 @@
 ---
 name: aimlapi-media-gen
 description: Generate images or videos via AIMLAPI from prompts. Use when Codex needs reliable AI/ML API media generation with retries, explicit User-Agent headers, and async video polling.
+env:
+  - AIMLAPI_API_KEY
+primaryEnv: AIMLAPI_API_KEY
 ---
 
 # AIMLAPI Media Generation
