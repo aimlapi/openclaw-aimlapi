@@ -1,0 +1,103 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - "release"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'aimlapi/openclaw-aimlapi'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Enable corepack + pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.23.0 --activate
+          pnpm -v
+          node -v
+          npm -v
+
+      - name: Configure npm auth (NPM_TOKEN)
+        shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -z "${NPM_TOKEN}" ]]; then
+            echo "Missing secrets.NPM_TOKEN"
+            exit 1
+          fi
+
+          rm -f .npmrc || true
+          cat > "$RUNNER_TEMP/.npmrc" <<EOF
+          registry=https://registry.npmjs.org/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          always-auth=true
+          EOF
+
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/.npmrc" >> "$GITHUB_ENV"
+
+          npm config get registry
+          npm whoami
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Decide publish mode (tag vs commit)
+        id: mode
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "mode=tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=commit" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute unique version (commit publish)
+        if: steps.mode.outputs.mode == 'commit'
+        id: ver
+        shell: bash
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          UNIQUE_VERSION="${BASE_VERSION}-ci.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
+          echo "unique=${UNIQUE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Computed version: ${UNIQUE_VERSION}"
+
+      - name: Set package version (commit publish)
+        if: steps.mode.outputs.mode == 'commit'
+        run: npm version "${{ steps.ver.outputs.unique }}" --no-git-tag-version
+
+      - name: Publish to npm (tag publish -> latest)
+        if: steps.mode.outputs.mode == 'tag'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Publish to npm (commit publish -> next)
+        if: steps.mode.outputs.mode == 'commit'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --tag next
