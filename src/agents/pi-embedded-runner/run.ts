@@ -86,6 +86,10 @@ type UsageAccumulator = {
   cacheRead: number;
   cacheWrite: number;
   total: number;
+  /** Cache fields from the most recent API call (not accumulated). */
+  lastCacheRead: number;
+  lastCacheWrite: number;
+  lastInput: number;
 };
 
 const createUsageAccumulator = (): UsageAccumulator => ({
@@ -94,6 +98,9 @@ const createUsageAccumulator = (): UsageAccumulator => ({
   cacheRead: 0,
   cacheWrite: 0,
   total: 0,
+  lastCacheRead: 0,
+  lastCacheWrite: 0,
+  lastInput: 0,
 });
 
 const hasUsageValues = (
@@ -118,6 +125,12 @@ const mergeUsageIntoAccumulator = (
   target.total +=
     usage.total ??
     (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+  // Track the most recent API call's cache fields for accurate context-size reporting.
+  // Accumulated cache totals inflate context size when there are multiple tool-call round-trips,
+  // since each call reports cacheRead ≈ current_context_size.
+  target.lastCacheRead = usage.cacheRead ?? 0;
+  target.lastCacheWrite = usage.cacheWrite ?? 0;
+  target.lastInput = usage.input ?? 0;
 };
 
 const toNormalizedUsage = (usage: UsageAccumulator) => {
@@ -130,13 +143,21 @@ const toNormalizedUsage = (usage: UsageAccumulator) => {
   if (!hasUsage) {
     return undefined;
   }
-  const derivedTotal = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+  // Use the LAST API call's cache fields for context-size calculation.
+  // The accumulated cacheRead/cacheWrite inflate context size because each tool-call
+  // round-trip reports cacheRead ≈ current_context_size, and summing N calls gives
+  // N × context_size which gets clamped to contextWindow (e.g. 200k).
+  // See: https://github.com/openclaw/openclaw/issues/13698
+  //
+  // We use lastInput/lastCacheRead/lastCacheWrite (from the most recent API call) for
+  // cache-related fields, but keep accumulated output (total generated text this turn).
+  const lastPromptTokens = usage.lastInput + usage.lastCacheRead + usage.lastCacheWrite;
   return {
-    input: usage.input || undefined,
+    input: usage.lastInput || undefined,
     output: usage.output || undefined,
-    cacheRead: usage.cacheRead || undefined,
-    cacheWrite: usage.cacheWrite || undefined,
-    total: usage.total || derivedTotal || undefined,
+    cacheRead: usage.lastCacheRead || undefined,
+    cacheWrite: usage.lastCacheWrite || undefined,
+    total: lastPromptTokens + usage.output || undefined,
   };
 };
 
@@ -599,7 +620,7 @@ export async function runEmbeddedPiAgent(
                 {
                   text:
                     "Context overflow: prompt too large for the model. " +
-                    "Try again with less input or a larger-context model.",
+                    "Try /reset (or /new) to start a fresh session, or use a larger-context model.",
                   isError: true,
                 },
               ],
