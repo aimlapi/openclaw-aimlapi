@@ -40,6 +40,12 @@ export function isLikelyContextOverflowError(errorMessage?: string): boolean {
   if (CONTEXT_WINDOW_TOO_SMALL_RE.test(errorMessage)) {
     return false;
   }
+  // Rate limit errors can match the broad CONTEXT_OVERFLOW_HINT_RE pattern
+  // (e.g., "request reached organization TPD rate limit" matches request.*limit).
+  // Exclude them before checking context overflow heuristics.
+  if (isRateLimitErrorMessage(errorMessage)) {
+    return false;
+  }
   if (isContextOverflowError(errorMessage)) {
     return true;
   }
@@ -72,6 +78,10 @@ const ERROR_PREFIX_RE =
 const CONTEXT_OVERFLOW_ERROR_HEAD_RE =
   /^(?:context overflow:|request_too_large\b|request size exceeds\b|request exceeds the maximum size\b|context length exceeded\b|maximum context length\b|prompt is too long\b|exceeds model context window\b)/i;
 const HTTP_STATUS_PREFIX_RE = /^(?:http\s*)?(\d{3})\s+(.+)$/i;
+const HTTP_STATUS_CODE_PREFIX_RE = /^(?:http\s*)?(\d{3})(?:\s+([\s\S]+))?$/i;
+const HTML_ERROR_PREFIX_RE = /^\s*(?:<!doctype\s+html\b|<html\b)/i;
+const CLOUDFLARE_HTML_ERROR_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
+const TRANSIENT_HTTP_ERROR_CODES = new Set([500, 502, 503, 521, 522, 523, 524, 529]);
 const HTTP_ERROR_HINTS = [
   "error",
   "bad request",
@@ -89,6 +99,50 @@ const HTTP_ERROR_HINTS = [
   "too many requests",
   "permission",
 ];
+
+function extractLeadingHttpStatus(raw: string): { code: number; rest: string } | null {
+  const match = raw.match(HTTP_STATUS_CODE_PREFIX_RE);
+  if (!match) {
+    return null;
+  }
+  const code = Number(match[1]);
+  if (!Number.isFinite(code)) {
+    return null;
+  }
+  return { code, rest: (match[2] ?? "").trim() };
+}
+
+export function isCloudflareOrHtmlErrorPage(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const status = extractLeadingHttpStatus(trimmed);
+  if (!status || status.code < 500) {
+    return false;
+  }
+
+  if (CLOUDFLARE_HTML_ERROR_CODES.has(status.code)) {
+    return true;
+  }
+
+  return (
+    status.code < 600 && HTML_ERROR_PREFIX_RE.test(status.rest) && /<\/html>/i.test(status.rest)
+  );
+}
+
+export function isTransientHttpError(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const status = extractLeadingHttpStatus(trimmed);
+  if (!status) {
+    return false;
+  }
+  return TRANSIENT_HTTP_ERROR_CODES.has(status.code);
+}
 
 function stripFinalTagsFromText(text: string): string {
   if (!text) {
@@ -127,6 +181,9 @@ function collapseConsecutiveDuplicateBlocks(text: string): string {
 }
 
 function isLikelyHttpErrorText(raw: string): boolean {
+  if (isCloudflareOrHtmlErrorPage(raw)) {
+    return true;
+  }
   const match = raw.match(HTTP_STATUS_PREFIX_RE);
   if (!match) {
     return false;
@@ -305,6 +362,11 @@ export function formatRawAssistantErrorForUi(raw?: string): string {
     return "LLM request failed with an unknown error.";
   }
 
+  const leadingStatus = extractLeadingHttpStatus(trimmed);
+  if (leadingStatus && isCloudflareOrHtmlErrorPage(trimmed)) {
+    return `The AI service is temporarily unavailable (HTTP ${leadingStatus.code}). Please try again in a moment.`;
+  }
+
   const httpMatch = trimmed.match(HTTP_STATUS_PREFIX_RE);
   if (httpMatch) {
     const rest = httpMatch[2].trim();
@@ -354,7 +416,7 @@ export function formatAssistantErrorText(
   if (isContextOverflowError(raw)) {
     return (
       "Context overflow: prompt too large for the model. " +
-      "Try again with less input or a larger-context model."
+      "Try /reset (or /new) to start a fresh session, or use a larger-context model."
     );
   }
 
@@ -413,46 +475,51 @@ export function formatAssistantErrorText(
   return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw;
 }
 
-export function sanitizeUserFacingText(text: string): string {
+export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boolean }): string {
   if (!text) {
     return text;
   }
+  const errorContext = opts?.errorContext ?? false;
   const stripped = stripFinalTagsFromText(text);
   const trimmed = stripped.trim();
   if (!trimmed) {
     return stripped;
   }
 
-  if (/incorrect role information|roles must alternate/i.test(trimmed)) {
-    return (
-      "Message ordering conflict - please try again. " +
-      "If this persists, use /new to start a fresh session."
-    );
-  }
-
-  if (shouldRewriteContextOverflowText(trimmed)) {
-    return (
-      "Context overflow: prompt too large for the model. " +
-      "Try again with less input or a larger-context model."
-    );
-  }
-
-  if (isBillingErrorMessage(trimmed)) {
-    return BILLING_ERROR_USER_MESSAGE;
-  }
-
-  if (isRawApiErrorPayload(trimmed) || isLikelyHttpErrorText(trimmed)) {
-    return formatRawAssistantErrorForUi(trimmed);
-  }
-
-  if (ERROR_PREFIX_RE.test(trimmed)) {
-    if (isOverloadedErrorMessage(trimmed) || isRateLimitErrorMessage(trimmed)) {
-      return "The AI service is temporarily overloaded. Please try again in a moment.";
+  // Only apply error-pattern rewrites when the caller knows this text is an error payload.
+  // Otherwise we risk swallowing legitimate assistant text that merely *mentions* these errors.
+  if (errorContext) {
+    if (/incorrect role information|roles must alternate/i.test(trimmed)) {
+      return (
+        "Message ordering conflict - please try again. " +
+        "If this persists, use /new to start a fresh session."
+      );
     }
-    if (isTimeoutErrorMessage(trimmed)) {
-      return "LLM request timed out.";
+
+    if (shouldRewriteContextOverflowText(trimmed)) {
+      return (
+        "Context overflow: prompt too large for the model. " +
+        "Try /reset (or /new) to start a fresh session, or use a larger-context model."
+      );
     }
-    return formatRawAssistantErrorForUi(trimmed);
+
+    if (isBillingErrorMessage(trimmed)) {
+      return BILLING_ERROR_USER_MESSAGE;
+    }
+
+    if (isRawApiErrorPayload(trimmed) || isLikelyHttpErrorText(trimmed)) {
+      return formatRawAssistantErrorForUi(trimmed);
+    }
+
+    if (ERROR_PREFIX_RE.test(trimmed)) {
+      if (isOverloadedErrorMessage(trimmed) || isRateLimitErrorMessage(trimmed)) {
+        return "The AI service is temporarily overloaded. Please try again in a moment.";
+      }
+      if (isTimeoutErrorMessage(trimmed)) {
+        return "LLM request timed out.";
+      }
+      return formatRawAssistantErrorForUi(trimmed);
+    }
   }
 
   return collapseConsecutiveDuplicateBlocks(stripped);
@@ -479,11 +546,12 @@ const ERROR_PATTERNS = {
   overloaded: [/overloaded_error|"type"\s*:\s*"overloaded_error"/i, "overloaded"],
   timeout: ["timeout", "timed out", "deadline exceeded", "context deadline exceeded"],
   billing: [
-    /\b402\b/,
+    /["']?(?:status|code)["']?\s*[:=]\s*402\b|\bhttp\s*402\b|\berror(?:\s+code)?\s*[:=]?\s*402\b|\b(?:got|returned|received)\s+(?:a\s+)?402\b|^\s*402\s+payment/i,
     "payment required",
     "insufficient credits",
     "credit balance",
     "plans & billing",
+    "insufficient balance",
   ],
   auth: [
     /invalid[_ ]?api[_ ]?key/,
@@ -545,16 +613,8 @@ export function isBillingErrorMessage(raw: string): boolean {
   if (!value) {
     return false;
   }
-  if (matchesErrorPatterns(value, ERROR_PATTERNS.billing)) {
-    return true;
-  }
-  return (
-    value.includes("billing") &&
-    (value.includes("upgrade") ||
-      value.includes("credits") ||
-      value.includes("payment") ||
-      value.includes("plan"))
-  );
+
+  return matchesErrorPatterns(value, ERROR_PATTERNS.billing);
 }
 
 export function isMissingToolCallInputError(raw: string): boolean {
@@ -648,6 +708,10 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   }
   if (isImageSizeError(raw)) {
     return null;
+  }
+  if (isTransientHttpError(raw)) {
+    // Treat transient 5xx provider failures as retryable transport issues.
+    return "timeout";
   }
   if (isRateLimitErrorMessage(raw)) {
     return "rate_limit";
