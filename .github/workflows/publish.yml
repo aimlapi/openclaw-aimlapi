@@ -3,13 +3,13 @@ name: Publish Package
 on:
   push:
     tags:
-      - "v*"
+      - "*"
     branches:
       - "release"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -37,27 +37,31 @@ jobs:
           node -v
           npm -v
 
-      - name: Configure npm auth (NPM_TOKEN)
+      - name: Decide mode (tag vs merge-to-release)
+        id: mode
         shell: bash
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [[ -z "${NPM_TOKEN}" ]]; then
-            echo "Missing secrets.NPM_TOKEN"
-            exit 1
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "mode=tag" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          rm -f .npmrc || true
-          cat > "$RUNNER_TEMP/.npmrc" <<EOF
-          registry=https://registry.npmjs.org/
-          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          always-auth=true
-          EOF
+          COMMIT_MSG="$(git log -1 --pretty=%B)"
+          echo "Commit message: $COMMIT_MSG"
 
-          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/.npmrc" >> "$GITHUB_ENV"
+          if [[ "$COMMIT_MSG" == *"Merge branch 'feature/add-aimlapi-models-provider' into release"* ]]; then
+            echo "mode=merge" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+          fi
 
-          npm config get registry
-          npm whoami
+      - name: Skip non-target release commit
+        if: steps.mode.outputs.mode == 'skip'
+        shell: bash
+        run: |
+          echo "Not a target merge into release. Skipping."
+          exit 0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -65,39 +69,48 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Decide publish mode (tag vs commit)
-        id: mode
+      - name: Resolve version and tag (merge mode)
+        if: steps.mode.outputs.mode == 'merge'
+        id: rel
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "mode=tag" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=commit" >> "$GITHUB_OUTPUT"
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Create and push git tag (merge mode, if not exists)
+        if: steps.mode.outputs.mode == 'merge'
+        shell: bash
+        run: |
+          TAG="${{ steps.rel.outputs.tag }}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG"
+            exit 0
           fi
 
-      - name: Compute unique version (commit publish)
-        if: steps.mode.outputs.mode == 'commit'
-        id: ver
-        shell: bash
-        run: |
-          BASE_VERSION=$(node -p "require('./package.json').version")
-          SHORT_SHA="${GITHUB_SHA::7}"
-          UNIQUE_VERSION="${BASE_VERSION}-ci.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
-          echo "unique=${UNIQUE_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Computed version: ${UNIQUE_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Set package version (commit publish)
-        if: steps.mode.outputs.mode == 'commit'
-        run: npm version "${{ steps.ver.outputs.unique }}" --no-git-tag-version
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag: $TAG"
 
-      - name: Publish to npm (tag publish -> latest)
-        if: steps.mode.outputs.mode == 'tag'
+      - name: Create GitHub Release (make latest)
+        if: steps.mode.outputs.mode == 'merge' || steps.mode.outputs.mode == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.mode.outputs.mode == 'tag' && steps.mode.outputs.tag || steps.rel.outputs.tag }}
+          name: ${{ steps.mode.outputs.mode == 'tag' && steps.mode.outputs.tag || steps.rel.outputs.tag }}
+          make_latest: true
+          generate_release_notes: true
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm (tag -> latest)
+        if: steps.mode.outputs.mode == 'merge' || steps.mode.outputs.mode == 'tag'
         run: npm publish --access public
-
-      - name: Publish to npm (commit publish -> next)
-        if: steps.mode.outputs.mode == 'commit'
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --tag next
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
