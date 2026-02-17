@@ -1,4 +1,3 @@
-import type { SignalEventHandlerDeps, SignalReceivePayload } from "./event-handler.types.js";
 import { resolveHumanDelayConfig } from "../../agents/identity.js";
 import { hasControlCommand } from "../../auto-reply/command-detection.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
@@ -47,7 +46,8 @@ import {
   resolveSignalSender,
 } from "../identity.js";
 import { sendMessageSignal, sendReadReceiptSignal, sendTypingSignal } from "../send.js";
-
+import type { SignalEventHandlerDeps, SignalReceivePayload } from "./event-handler.types.js";
+import { renderSignalMentions } from "./mentions.js";
 export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
   const inboundDebounceMs = resolveInboundDebounceMs({ cfg: deps.cfg, channel: "signal" });
 
@@ -352,7 +352,13 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       : deps.isSignalReactionMessage(dataMessage?.reaction)
         ? dataMessage?.reaction
         : null;
-    const messageText = (dataMessage?.message ?? "").trim();
+
+    // Replace ￼ (object replacement character) with @uuid or @phone from mentions
+    // Signal encodes mentions as the object replacement character; hydrate them from metadata first.
+    const rawMessage = dataMessage?.message ?? "";
+    const normalizedMessage = renderSignalMentions(rawMessage, dataMessage?.mentions);
+    const messageText = normalizedMessage.trim();
+
     const quoteText = dataMessage?.quote?.text?.trim() ?? "";
     const hasBodyContent =
       Boolean(messageText || quoteText) || Boolean(!reaction && dataMessage?.attachments?.length);

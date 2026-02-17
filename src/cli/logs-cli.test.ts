@@ -12,6 +12,14 @@ vi.mock("./gateway-rpc.js", async () => {
   };
 });
 
+async function runLogsCli(argv: string[]) {
+  const { registerLogsCli } = await import("./logs-cli.js");
+  const program = new Command();
+  program.exitOverride();
+  registerLogsCli(program);
+  await program.parseAsync(argv, { from: "user" });
+}
+
 describe("logs cli", () => {
   afterEach(() => {
     callGatewayFromCli.mockReset();
@@ -38,12 +46,7 @@ describe("logs cli", () => {
       return true;
     });
 
-    const { registerLogsCli } = await import("./logs-cli.js");
-    const program = new Command();
-    program.exitOverride();
-    registerLogsCli(program);
-
-    await program.parseAsync(["logs"], { from: "user" });
+    await runLogsCli(["logs"]);
 
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
@@ -72,12 +75,7 @@ describe("logs cli", () => {
       return true;
     });
 
-    const { registerLogsCli } = await import("./logs-cli.js");
-    const program = new Command();
-    program.exitOverride();
-    registerLogsCli(program);
-
-    await program.parseAsync(["logs", "--local-time", "--plain"], { from: "user" });
+    await runLogsCli(["logs", "--local-time", "--plain"]);
 
     stdoutSpy.mockRestore();
 
@@ -105,12 +103,7 @@ describe("logs cli", () => {
       return true;
     });
 
-    const { registerLogsCli } = await import("./logs-cli.js");
-    const program = new Command();
-    program.exitOverride();
-    registerLogsCli(program);
-
-    await program.parseAsync(["logs"], { from: "user" });
+    await runLogsCli(["logs"]);
 
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
@@ -132,9 +125,8 @@ describe("logs cli", () => {
     it("formats local time in plain mode when localTime is true", () => {
       const utcTime = "2025-01-01T12:00:00.000Z";
       const result = formatLogTimestamp(utcTime, "plain", true);
-      // Should be local time without 'Z' suffix
-      expect(result).not.toContain("Z");
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      // Should be local time with explicit timezone offset (not 'Z' suffix).
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/);
       // The exact time depends on timezone, but should be different from UTC
       expect(result).not.toBe(utcTime);
     });

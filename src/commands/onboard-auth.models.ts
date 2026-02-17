@@ -1,8 +1,9 @@
-import type { ModelDefinitionConfig } from "../config/types.js";
 import { QIANFAN_BASE_URL, QIANFAN_DEFAULT_MODEL_ID } from "../agents/models-config.providers.js";
+import type { ModelDefinitionConfig } from "../config/types.js";
 
 export const DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1";
 export const MINIMAX_API_BASE_URL = "https://api.minimax.io/anthropic";
+export const MINIMAX_CN_API_BASE_URL = "https://api.minimaxi.com/anthropic";
 export const MINIMAX_HOSTED_MODEL_ID = "MiniMax-M2.1";
 export const MINIMAX_HOSTED_MODEL_REF = `minimax/${MINIMAX_HOSTED_MODEL_ID}`;
 export const DEFAULT_MINIMAX_CONTEXT_WINDOW = 200000;
@@ -28,7 +29,7 @@ export const ZAI_CODING_GLOBAL_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 export const ZAI_CODING_CN_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4";
 export const ZAI_GLOBAL_BASE_URL = "https://api.z.ai/api/paas/v4";
 export const ZAI_CN_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
-export const ZAI_DEFAULT_MODEL_ID = "glm-4.7";
+export const ZAI_DEFAULT_MODEL_ID = "glm-5";
 
 export function resolveZaiBaseUrl(endpoint?: string): string {
   switch (endpoint) {
@@ -39,8 +40,9 @@ export function resolveZaiBaseUrl(endpoint?: string): string {
     case "cn":
       return ZAI_CN_BASE_URL;
     case "coding-global":
-    default:
       return ZAI_CODING_GLOBAL_BASE_URL;
+    default:
+      return ZAI_GLOBAL_BASE_URL;
   }
 }
 
@@ -89,6 +91,8 @@ const MINIMAX_MODEL_CATALOG = {
     name: "MiniMax M2.1 Lightning",
     reasoning: false,
   },
+  "MiniMax-M2.5": { name: "MiniMax M2.5", reasoning: true },
+  "MiniMax-M2.5-Lightning": { name: "MiniMax M2.5 Lightning", reasoning: true },
 } as const;
 
 type MinimaxCatalogId = keyof typeof MINIMAX_MODEL_CATALOG;
