@@ -31,8 +31,10 @@ import {
   listChannelSupportedActions,
   resolveChannelMessageToolHints,
 } from "../../channel-tools.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../../defaults.js";
 import { resolveOpenClawDocsPath } from "../../docs-path.js";
 import { isTimeoutError } from "../../failover-error.js";
+import { resolveImageSanitizationLimits } from "../../image-sanitization.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
@@ -102,6 +104,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
+import { installToolResultContextGuard } from "../tool-result-context-guard.js";
 import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
@@ -325,6 +328,7 @@ export async function runEmbeddedAttempt(
           abortSignal: runAbortController.signal,
           modelProvider: params.model.provider,
           modelId: params.modelId,
+          modelContextWindowTokens: params.model.contextWindow,
           modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
           currentChannelId: params.currentChannelId,
           currentThreadTs: params.currentThreadTs,
@@ -511,6 +515,7 @@ export async function runEmbeddedAttempt(
 
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;
     let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let removeToolResultContextGuard: (() => void) | undefined;
     try {
       await repairSessionFileIfNeeded({
         sessionFile: params.sessionFile,
@@ -606,6 +611,15 @@ export async function runEmbeddedAttempt(
         throw new Error("Embedded agent session missing");
       }
       const activeSession = session;
+      removeToolResultContextGuard = installToolResultContextGuard({
+        agent: activeSession.agent,
+        contextWindowTokens: Math.max(
+          1,
+          Math.floor(
+            params.model.contextWindow ?? params.model.maxTokens ?? DEFAULT_CONTEXT_TOKENS,
+          ),
+        ),
+      });
       const cacheTrace = createCacheTrace({
         cfg: params.config,
         env: process.env,
@@ -732,6 +746,7 @@ export async function runEmbeddedAttempt(
           modelApi: params.model.api,
           modelId: params.modelId,
           provider: params.provider,
+          config: params.config,
           sessionManager,
           sessionId: params.sessionId,
           policy: transcriptPolicy,
@@ -1043,6 +1058,7 @@ export async function runEmbeddedAttempt(
             existingImages: params.images,
             historyMessages: activeSession.messages,
             maxBytes: MAX_IMAGE_BYTES,
+            maxDimensionPx: resolveImageSanitizationLimits(params.config).maxDimensionPx,
             // Enforce sandbox path restrictions when sandbox is enabled
             sandbox:
               sandbox?.enabled && sandbox?.fsBridge
@@ -1381,6 +1397,7 @@ export async function runEmbeddedAttempt(
       // flushPendingToolResults() fires while tools are still executing, inserting
       // synthetic "missing tool result" errors and causing silent agent failures.
       // See: https://github.com/openclaw/openclaw/issues/8643
+      removeToolResultContextGuard?.();
       await flushPendingToolResultsAfterIdle({
         agent: session?.agent,
         sessionManager,
