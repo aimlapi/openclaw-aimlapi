@@ -2,17 +2,17 @@ name: Publish Package
 
 on:
   push:
-    tags:
-      - "*"
     branches:
-      - "release"
+      - release
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  publish:
+  build_tag_release_publish:
     if: github.repository == 'aimlapi/openclaw-aimlapi'
     runs-on: ubuntu-latest
 
@@ -37,54 +37,98 @@ jobs:
           node -v
           npm -v
 
-      - name: Decide mode (tag vs merge-to-release)
+      - name: Decide mode (branch release vs tag)
         id: mode
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "mode=tag" >> "$GITHUB_OUTPUT"
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "mode=branch" >> "$GITHUB_OUTPUT"
 
-          COMMIT_MSG="$(git log -1 --pretty=%B)"
-          echo "Commit message: $COMMIT_MSG"
+      # -----------------------------
+      # BRANCH: release -> create tag (final or beta.N) + publish
+      # -----------------------------
+      - name: Decide tag on release branch (merge + version bump => final, else beta)
+        if: steps.mode.outputs.mode == 'branch'
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
 
-          if [[ "$COMMIT_MSG" == *"Merge branch 'feature/add-aimlapi-models-provider' into release"* ]]; then
-            echo "mode=merge" >> "$GITHUB_OUTPUT"
+          BASE="$(node -p "require('./package.json').version")"
+          echo "Base version: $BASE"
+
+          # Detect merge commit by parent count
+          PARENTS="$(git rev-list --parents -n 1 HEAD)"
+          PARENT_COUNT=$(( $(echo "$PARENTS" | wc -w) - 1 ))
+          echo "Parent count: $PARENT_COUNT"
+
+          IS_MERGE="false"
+          if [[ "$PARENT_COUNT" -ge 2 ]]; then
+            IS_MERGE="true"
+          fi
+          echo "Is merge commit: $IS_MERGE"
+
+          # Last stable tag: vX.Y.Z only
+          LAST_STABLE="$(git tag -l 'v*' \
+            | sed 's/^v//' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -n 1 || true)"
+
+          if [[ -z "${LAST_STABLE:-}" ]]; then
+            echo "No previous stable tag found"
           else
-            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            echo "Last stable tag: $LAST_STABLE"
           fi
 
-      - name: Skip non-target release commit
-        if: steps.mode.outputs.mode == 'skip'
-        shell: bash
-        run: |
-          echo "Not a target merge into release. Skipping."
-          exit 0
+          SHOULD_FINAL="false"
+          if [[ "$IS_MERGE" == "true" ]]; then
+            if [[ -z "${LAST_STABLE:-}" ]]; then
+              SHOULD_FINAL="true"
+            else
+              HIGHEST="$(printf '%s\n' "$LAST_STABLE" "$BASE" | sort -V | tail -n 1)"
+              if [[ "$HIGHEST" == "$BASE" ]] && [[ "$BASE" != "$LAST_STABLE" ]]; then
+                SHOULD_FINAL="true"
+              fi
+            fi
+          fi
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          if [[ "$SHOULD_FINAL" == "true" ]]; then
+            TAG="v${BASE}"
+            echo "kind=final" >> "$GITHUB_OUTPUT"
+            echo "version=$BASE" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "Resolved FINAL tag: $TAG"
+            exit 0
+          fi
 
-      - name: Build
-        run: pnpm build
+          # beta for this BASE
+          N="$(git tag -l "v${BASE}-beta.*" | wc -l | tr -d ' ')"
+          NEXT=$((N + 1))
 
-      - name: Resolve version and tag (merge mode)
-        if: steps.mode.outputs.mode == 'merge'
-        id: rel
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          TAG="v$VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VER="${BASE}-beta.${NEXT}"
+          TAG="v${VER}"
+
+          # Set local package.json version for correct npm publish (no commit, no tag)
+          npm version "$VER" --no-git-tag-version
+
+          echo "kind=beta" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Resolved tag: $TAG"
+          echo "Resolved BETA tag: $TAG"
 
-      - name: Create and push git tag (merge mode, if not exists)
-        if: steps.mode.outputs.mode == 'merge'
+      - name: Create and push git tag (release branch)
+        if: steps.mode.outputs.mode == 'branch'
         shell: bash
         run: |
-          TAG="${{ steps.rel.outputs.tag }}"
+          set -euo pipefail
+          TAG="${{ steps.decide.outputs.tag }}"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag already exists: $TAG"
@@ -98,19 +142,91 @@ jobs:
           git push origin "$TAG"
           echo "Created and pushed tag: $TAG"
 
-      - name: Create GitHub Release (make latest)
-        if: steps.mode.outputs.mode == 'merge' || steps.mode.outputs.mode == 'tag'
+      - name: Install dependencies
+        if: steps.mode.outputs.mode == 'branch'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.mode.outputs.mode == 'branch'
+        run: pnpm build
+
+      - name: Decide npm dist-tag and GitHub release flags (release branch)
+        if: steps.mode.outputs.mode == 'branch'
+        id: rel_branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ steps.decide.outputs.tag }}"  # v2026.2.18 or v2026.2.18-beta.1
+          if [[ "$TAG_NAME" == *"-beta."* ]]; then
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release (release branch)
+        if: steps.mode.outputs.mode == 'branch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.mode.outputs.mode == 'tag' && steps.mode.outputs.tag || steps.rel.outputs.tag }}
-          name: ${{ steps.mode.outputs.mode == 'tag' && steps.mode.outputs.tag || steps.rel.outputs.tag }}
-          make_latest: true
+          tag_name: ${{ steps.decide.outputs.tag }}
+          name: ${{ steps.decide.outputs.tag }}
+          prerelease: ${{ steps.rel_branch.outputs.is_prerelease }}
+          make_latest: ${{ steps.rel_branch.outputs.make_latest }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to npm (tag -> latest)
-        if: steps.mode.outputs.mode == 'merge' || steps.mode.outputs.mode == 'tag'
-        run: npm publish --access public
+      - name: Publish to npm (release branch)
+        if: steps.mode.outputs.mode == 'branch'
+        run: npm publish --access public --tag ${{ steps.rel_branch.outputs.npm_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # -----------------------------
+      # TAG: v* pushed manually -> publish + release
+      # -----------------------------
+      - name: Install dependencies (tag)
+        if: steps.mode.outputs.mode == 'tag'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (tag)
+        if: steps.mode.outputs.mode == 'tag'
+        run: pnpm build
+
+      - name: Decide npm dist-tag and GitHub release flags (tag)
+        if: steps.mode.outputs.mode == 'tag'
+        id: rel_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ steps.mode.outputs.tag }}"  # v2026.2.18 or v2026.2.18-beta.1
+          if [[ "$TAG_NAME" == *"-beta."* ]]; then
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release (tag)
+        if: steps.mode.outputs.mode == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.mode.outputs.tag }}
+          name: ${{ steps.mode.outputs.tag }}
+          prerelease: ${{ steps.rel_tag.outputs.is_prerelease }}
+          make_latest: ${{ steps.rel_tag.outputs.make_latest }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm (tag)
+        if: steps.mode.outputs.mode == 'tag'
+        run: npm publish --access public --tag ${{ steps.rel_tag.outputs.npm_tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
