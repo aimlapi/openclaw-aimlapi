@@ -12,13 +12,13 @@ import urllib.request
 from typing import Any
 
 DEFAULT_BASE_URL = "https://api.aimlapi.com/v1"
-DEFAULT_USER_AGENT = "openclaw-skill-aimlapi-media-gen/1.1"
-
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate images via AIMLAPI /images/generations")
     parser.add_argument("--prompt", required=True, help="Text prompt for the image")
     parser.add_argument("--model", default="aimlapi/openai/gpt-image-1", help="Model reference")
+    parser.add_argument("--image-url", help="Input image URL or local path for I2I")
     parser.add_argument("--size", default="1024x1024", help="Image size, e.g., 1024x1024")
     parser.add_argument("--count", type=int, default=1, help="Number of images to generate")
     parser.add_argument("--out-dir", default="./out/images", help="Output directory")
@@ -32,104 +32,57 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     return parser.parse_args()
 
+def get_base64(path_or_url: str) -> str:
+    p = pathlib.Path(path_or_url)
+    if p.exists() and p.is_file():
+        import base64
+        ext = p.suffix.lower().replace('.', '')
+        if ext == 'jpg': ext = 'jpeg'
+        encoded = base64.b64encode(p.read_bytes()).decode()
+        return f"data:image/{ext};base64,{encoded}"
+    return path_or_url
 
 def load_extra(extra_json: str | None) -> dict[str, Any]:
-    if not extra_json:
-        return {}
+    if not extra_json: return {}
     try:
         data = json.loads(extra_json)
-        # Security: Whitelist allowed extra fields
         allowed = {"quality", "style", "response_format", "user"}
         return {k: v for k, v in data.items() if k in allowed}
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"Invalid --extra-json: {exc}") from exc
-
+        raise SystemExit(f"Invalid --extra-json: {exc}")
 
 def load_api_key(args: argparse.Namespace) -> str:
     api_key = os.getenv("AIMLAPI_API_KEY")
-    if api_key:
-        return api_key
+    if api_key: return api_key
     if args.apikey_file:
         key = pathlib.Path(args.apikey_file).read_text(encoding="utf-8").strip()
-        if key:
-            return key
+        if key: return key
     raise SystemExit("Missing AIMLAPI_API_KEY")
 
-
-def request_json(
-    url: str,
-    payload: dict[str, Any],
-    api_key: str,
-    timeout: int,
-    retry_max: int,
-    retry_delay: float,
-    user_agent: str,
-    verbose: bool,
-) -> dict[str, Any]:
+def request_json(url, payload, api_key, timeout, retry_max, retry_delay, user_agent, verbose):
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": user_agent,
-        },
-        method="POST",
-    )
-
+    req = urllib.request.Request(url, data=data, headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": user_agent,
+    }, method="POST")
     attempt = 0
     while True:
         try:
-            if verbose:
-                print(f"[debug] POST {url} attempt {attempt + 1}")
+            if verbose: print(f"[debug] POST {url} attempt {attempt + 1}")
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8") if exc.fp else str(exc)
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             if attempt < retry_max:
                 attempt += 1
-                if verbose:
-                    print(f"[warning] HTTPError {exc.code}; retry in {retry_delay}s")
                 time.sleep(retry_delay)
                 continue
-            raise SystemExit(f"Request failed: {exc.code} {detail}") from exc
-        except urllib.error.URLError as exc:
-            if attempt < retry_max:
-                attempt += 1
-                if verbose:
-                    print(f"[warning] URLError; retry in {retry_delay}s: {exc}")
-                time.sleep(retry_delay)
-                continue
-            raise SystemExit(f"Request failed: {exc}") from exc
-
-
-def ensure_dir(path: str) -> pathlib.Path:
-    out_dir = pathlib.Path(path)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir
-
-
-def write_from_b64(encoded: str, path: pathlib.Path) -> None:
-    path.write_bytes(base64.b64decode(encoded))
-
-
-def download_url(url: str, path: pathlib.Path, timeout: int, user_agent: str, verbose: bool) -> None:
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent}, method="GET")
-    if verbose:
-        print(f"[debug] GET {url} -> {path}")
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        path.write_bytes(response.read())
-
+            raise SystemExit(f"Request failed: {exc}")
 
 def main() -> None:
     args = parse_args()
     api_key = load_api_key(args)
-
-    if args.verbose:
-        print(f"[info] model={args.model} size={args.size} count={args.count} out={args.out_dir}")
-
     payload = {
         "model": args.model,
         "prompt": args.prompt,
@@ -137,38 +90,25 @@ def main() -> None:
         "size": args.size,
         **load_extra(args.extra_json),
     }
+    if args.image_url:
+        img_data = get_base64(args.image_url)
+        if "flux" in args.model.lower(): payload["image_url"] = img_data
+        else: payload["image"] = img_data
 
     url = f"{DEFAULT_BASE_URL.rstrip('/')}/images/generations"
-    response = request_json(
-        url,
-        payload,
-        api_key,
-        args.timeout,
-        args.retry_max,
-        args.retry_delay,
-        args.user_agent,
-        args.verbose,
-    )
+    response = request_json(url, payload, api_key, args.timeout, args.retry_max, args.retry_delay, args.user_agent, args.verbose)
     data = response.get("data", [])
-    if not data:
-        raise SystemExit("No images returned. Check model access and payload.")
+    if not data: raise SystemExit(f"No result: {response}")
 
-    out_dir = ensure_dir(args.out_dir)
+    out_dir = pathlib.Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for index, item in enumerate(data, start=1):
-        if "b64_json" in item:
-            file_path = out_dir / f"image-{index}.{args.output_format.lstrip('.')}"
-            write_from_b64(item["b64_json"], file_path)
-            continue
-        if "url" in item:
-            url_value = item["url"]
-            extension = pathlib.Path(url_value).suffix or f".{args.output_format.lstrip('.')}"
-            file_path = out_dir / f"image-{index}{extension}"
-            download_url(url_value, file_path, args.timeout, args.user_agent, args.verbose)
-            continue
-        raise SystemExit(f"Unsupported response item: {item}")
-
-    print(f"Saved {len(data)} image(s) to {out_dir}")
-
+        url_value = item.get("url")
+        file_path = out_dir / f"image-{int(time.time())}-{index}.png"
+        req = urllib.request.Request(url_value, headers={"User-Agent": args.user_agent})
+        with urllib.request.urlopen(req) as res:
+            file_path.write_bytes(res.read())
+    print(f"SUCCESS: {out_dir}")
 
 if __name__ == "__main__":
     main()
