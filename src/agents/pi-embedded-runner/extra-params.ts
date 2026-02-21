@@ -4,6 +4,10 @@ import { streamSimple } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../config/config.js";
 import { log } from "./logger.js";
 
+// AIMLAPI defaults max_tokens to 512 when not set, which truncates tool call JSON.
+// Override with a safe default so tool calls are never silently cut off.
+const AIMLAPI_DEFAULT_MAX_TOKENS = 32768;
+
 const OPENROUTER_APP_HEADERS: Record<string, string> = {
   "HTTP-Referer": "https://openclaw.ai",
   "X-Title": "OpenClaw",
@@ -337,7 +341,9 @@ export function applyExtraParamsToAgent(
           Object.entries(extraParamsOverride).filter(([, value]) => value !== undefined),
         )
       : undefined;
-  const merged = Object.assign({}, extraParams, override);
+  const providerDefaults: Record<string, unknown> =
+    provider === "aimlapi" ? { maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS } : {};
+  const merged = Object.assign({}, providerDefaults, extraParams, override);
   const wrappedStreamFn = createStreamFnWithExtraParams(agent.streamFn, merged, provider);
 
   if (wrappedStreamFn) {
