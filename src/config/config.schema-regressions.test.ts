@@ -37,6 +37,20 @@ describe("config schema regressions", () => {
     expect(res.ok).toBe(true);
   });
 
+  it('accepts memorySearch provider "mistral"', () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "mistral",
+          },
+        },
+      },
+    });
+
+    expect(res.ok).toBe(true);
+  });
+
   it("accepts safe iMessage remoteHost", () => {
     const res = validateConfigObject({
       channels: {
@@ -70,6 +84,19 @@ describe("config schema regressions", () => {
         imessage: {
           attachmentRoots: ["/Users/*/Library/Messages/Attachments"],
           remoteAttachmentRoots: ["/Volumes/relay/attachments"],
+        },
+      },
+    });
+
+    expect(res.ok).toBe(true);
+  });
+
+  it("accepts string values for agents defaults model inputs", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          model: "anthropic/claude-opus-4-6",
+          imageModel: "openai/gpt-4.1-mini",
         },
       },
     });

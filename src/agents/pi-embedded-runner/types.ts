@@ -41,7 +41,9 @@ export type EmbeddedPiRunMeta = {
       | "compaction_failure"
       | "role_ordering"
       | "image_size"
+      | "retry_limit"
       | "aimlapi_invalid_tool_schema";
+
     message: string;
   };
   /** Stop reason for the agent run (e.g., "completed", "tool_calls"). */

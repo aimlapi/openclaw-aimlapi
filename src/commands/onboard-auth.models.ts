@@ -31,6 +31,10 @@ export const ZAI_GLOBAL_BASE_URL = "https://api.z.ai/api/paas/v4";
 export const ZAI_CN_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 export const ZAI_DEFAULT_MODEL_ID = "glm-5";
 
+export const OPENCODE_ZEN_DEFAULT_MODEL = "<placeholder>"; // Not defined in this file; fetched dynamically from API
+export const OPENCODE_ZEN_DEFAULT_MODEL_REF = `opencode/${OPENCODE_ZEN_DEFAULT_MODEL}`;
+
+
 export function resolveZaiBaseUrl(endpoint?: string): string {
   switch (endpoint) {
     case "coding-cn":
@@ -46,12 +50,12 @@ export function resolveZaiBaseUrl(endpoint?: string): string {
   }
 }
 
-// Pricing: MiniMax doesn't publish public rates. Override in models.json for accurate costs.
+// Pricing per 1M tokens (USD) — https://platform.minimaxi.com/document/Price
 export const MINIMAX_API_COST = {
-  input: 15,
-  output: 60,
-  cacheRead: 2,
-  cacheWrite: 10,
+  input: 0.3,
+  output: 1.2,
+  cacheRead: 0.03,
+  cacheWrite: 0.12,
 };
 export const MINIMAX_HOSTED_COST = {
   input: 0,
@@ -144,6 +148,30 @@ export function buildMoonshotModelDefinition(): ModelDefinitionConfig {
     cost: MOONSHOT_DEFAULT_COST,
     contextWindow: MOONSHOT_DEFAULT_CONTEXT_WINDOW,
     maxTokens: MOONSHOT_DEFAULT_MAX_TOKENS,
+  };
+}
+
+export const MISTRAL_BASE_URL = "https://api.mistral.ai/v1";
+export const MISTRAL_DEFAULT_MODEL_ID = "mistral-large-latest";
+export const MISTRAL_DEFAULT_MODEL_REF = `mistral/${MISTRAL_DEFAULT_MODEL_ID}`;
+export const MISTRAL_DEFAULT_CONTEXT_WINDOW = 262144;
+export const MISTRAL_DEFAULT_MAX_TOKENS = 262144;
+export const MISTRAL_DEFAULT_COST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+};
+
+export function buildMistralModelDefinition(): ModelDefinitionConfig {
+  return {
+    id: MISTRAL_DEFAULT_MODEL_ID,
+    name: "Mistral Large",
+    reasoning: false,
+    input: ["text", "image"],
+    cost: MISTRAL_DEFAULT_COST,
+    contextWindow: MISTRAL_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: MISTRAL_DEFAULT_MAX_TOKENS,
   };
 }
 

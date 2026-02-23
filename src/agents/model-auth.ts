@@ -279,6 +279,14 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     return pick("QWEN_OAUTH_TOKEN") ?? pick("QWEN_PORTAL_API_KEY");
   }
 
+  if (normalized === "volcengine" || normalized === "volcengine-plan") {
+    return pick("VOLCANO_ENGINE_API_KEY");
+  }
+
+  if (normalized === "byteplus" || normalized === "byteplus-plan") {
+    return pick("BYTEPLUS_API_KEY");
+  }
+
   if (normalized === "aimlapi") {
     return pick("AIMLAPI_API_KEY") ?? pick("AIML_API_KEY");
   }
