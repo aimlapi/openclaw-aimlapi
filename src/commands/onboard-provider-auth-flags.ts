@@ -4,6 +4,7 @@ type OnboardProviderAuthOptionKey = keyof Pick<
   OnboardOptions,
   | "anthropicApiKey"
   | "openaiApiKey"
+  | "mistralApiKey"
   | "openrouterApiKey"
   | "aimlapiApiKey"
   | "aiGatewayApiKey"
@@ -22,6 +23,8 @@ type OnboardProviderAuthOptionKey = keyof Pick<
   | "xaiApiKey"
   | "litellmApiKey"
   | "qianfanApiKey"
+  | "volcengineApiKey"
+  | "byteplusApiKey"
 >;
 
 export type OnboardProviderAuthFlag = {
@@ -47,6 +50,13 @@ export const ONBOARD_PROVIDER_AUTH_FLAGS: ReadonlyArray<OnboardProviderAuthFlag>
     cliFlag: "--openai-api-key",
     cliOption: "--openai-api-key <key>",
     description: "OpenAI API key",
+  },
+  {
+    optionKey: "mistralApiKey",
+    authChoice: "mistral-api-key",
+    cliFlag: "--mistral-api-key",
+    cliOption: "--mistral-api-key <key>",
+    description: "Mistral API key",
   },
   {
     optionKey: "openrouterApiKey",
@@ -173,5 +183,19 @@ export const ONBOARD_PROVIDER_AUTH_FLAGS: ReadonlyArray<OnboardProviderAuthFlag>
     cliFlag: "--qianfan-api-key",
     cliOption: "--qianfan-api-key <key>",
     description: "QIANFAN API key",
+  },
+  {
+    optionKey: "volcengineApiKey",
+    authChoice: "volcengine-api-key",
+    cliFlag: "--volcengine-api-key",
+    cliOption: "--volcengine-api-key <key>",
+    description: "Volcano Engine API key",
+  },
+  {
+    optionKey: "byteplusApiKey",
+    authChoice: "byteplus-api-key",
+    cliFlag: "--byteplus-api-key",
+    cliOption: "--byteplus-api-key <key>",
+    description: "BytePlus API key",
   },
 ];

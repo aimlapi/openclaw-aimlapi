@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { type OpenClawConfig, loadConfig } from "../config/config.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveOpenClawAgentDir } from "./agent-paths.js";
 import { ensureOpenClawModelsJson } from "./models-config.js";
+
+const log = createSubsystemLogger("model-catalog");
 
 export type ModelCatalogEntry = {
   id: string;
@@ -189,7 +192,7 @@ export async function loadModelCatalog(params?: {
     } catch (error) {
       if (!hasLoggedModelCatalogError) {
         hasLoggedModelCatalogError = true;
-        console.warn(`[model-catalog] Failed to load model catalog: ${String(error)}`);
+        log.warn(`Failed to load model catalog: ${String(error)}`);
       }
       // Don't poison the cache on transient dependency/filesystem issues.
       modelCatalogPromise = null;
