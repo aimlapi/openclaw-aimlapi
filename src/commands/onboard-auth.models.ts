@@ -31,6 +31,10 @@ export const ZAI_GLOBAL_BASE_URL = "https://api.z.ai/api/paas/v4";
 export const ZAI_CN_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 export const ZAI_DEFAULT_MODEL_ID = "glm-5";
 
+export const OPENCODE_ZEN_DEFAULT_MODEL = "<placeholder>"; // Not defined in this file; fetched dynamically from API
+export const OPENCODE_ZEN_DEFAULT_MODEL_REF = `opencode/${OPENCODE_ZEN_DEFAULT_MODEL}`;
+
+
 export function resolveZaiBaseUrl(endpoint?: string): string {
   switch (endpoint) {
     case "coding-cn":
