@@ -1,5 +1,18 @@
 import { QIANFAN_BASE_URL, QIANFAN_DEFAULT_MODEL_ID } from "../agents/models-config.providers.js";
 import type { ModelDefinitionConfig } from "../config/types.js";
+import {
+  KILOCODE_DEFAULT_CONTEXT_WINDOW,
+  KILOCODE_DEFAULT_COST,
+  KILOCODE_DEFAULT_MAX_TOKENS,
+  KILOCODE_DEFAULT_MODEL_ID,
+  KILOCODE_DEFAULT_MODEL_NAME,
+} from "../providers/kilocode-shared.js";
+export {
+  KILOCODE_DEFAULT_CONTEXT_WINDOW,
+  KILOCODE_DEFAULT_COST,
+  KILOCODE_DEFAULT_MAX_TOKENS,
+  KILOCODE_DEFAULT_MODEL_ID,
+};
 
 export const DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1";
 export const MINIMAX_API_BASE_URL = "https://api.minimax.io/anthropic";
@@ -33,7 +46,6 @@ export const ZAI_DEFAULT_MODEL_ID = "glm-5";
 
 export const OPENCODE_ZEN_DEFAULT_MODEL = "<placeholder>"; // Not defined in this file; fetched dynamically from API
 export const OPENCODE_ZEN_DEFAULT_MODEL_REF = `opencode/${OPENCODE_ZEN_DEFAULT_MODEL}`;
-
 
 export function resolveZaiBaseUrl(endpoint?: string): string {
   switch (endpoint) {
@@ -144,7 +156,7 @@ export function buildMoonshotModelDefinition(): ModelDefinitionConfig {
     id: MOONSHOT_DEFAULT_MODEL_ID,
     name: "Kimi K2.5",
     reasoning: false,
-    input: ["text"],
+    input: ["text", "image"],
     cost: MOONSHOT_DEFAULT_COST,
     contextWindow: MOONSHOT_DEFAULT_CONTEXT_WINDOW,
     maxTokens: MOONSHOT_DEFAULT_MAX_TOKENS,
@@ -216,6 +228,18 @@ export function buildXaiModelDefinition(): ModelDefinitionConfig {
     cost: XAI_DEFAULT_COST,
     contextWindow: XAI_DEFAULT_CONTEXT_WINDOW,
     maxTokens: XAI_DEFAULT_MAX_TOKENS,
+  };
+}
+
+export function buildKilocodeModelDefinition(): ModelDefinitionConfig {
+  return {
+    id: KILOCODE_DEFAULT_MODEL_ID,
+    name: KILOCODE_DEFAULT_MODEL_NAME,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: KILOCODE_DEFAULT_COST,
+    contextWindow: KILOCODE_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: KILOCODE_DEFAULT_MAX_TOKENS,
   };
 }
 

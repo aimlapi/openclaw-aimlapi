@@ -119,6 +119,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Gateway HTTP API configuration grouping endpoint toggles and transport-facing API exposure controls. Keep only required endpoints enabled to reduce attack surface.",
   "gateway.http.endpoints":
     "HTTP endpoint feature toggles under the gateway API surface for compatibility routes and optional integrations. Enable endpoints intentionally and monitor access patterns after rollout.",
+  "gateway.http.securityHeaders":
+    "Optional HTTP response security headers applied by the gateway process itself. Prefer setting these at your reverse proxy when TLS terminates there.",
+  "gateway.http.securityHeaders.strictTransportSecurity":
+    "Value for the Strict-Transport-Security response header. Set only on HTTPS origins that you fully control; use false to explicitly disable.",
   "gateway.remote.url": "Remote Gateway WebSocket URL (ws:// or wss://).",
   "gateway.remote.token":
     "Bearer token used to authenticate this client to a remote gateway in token-auth deployments. Store via secret/env substitution and rotate alongside remote gateway auth changes.",
@@ -129,6 +133,26 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.remote.sshTarget":
     "Remote gateway over SSH (tunnels the gateway port to localhost). Format: user@host or user@host:port.",
   "gateway.remote.sshIdentity": "Optional SSH identity file path (passed to ssh -i).",
+  "talk.provider": 'Active Talk provider id (for example "elevenlabs").',
+  "talk.providers":
+    "Provider-specific Talk settings keyed by provider id. During migration, prefer this over legacy talk.* keys.",
+  "talk.providers.*.voiceId": "Provider default voice ID for Talk mode.",
+  "talk.providers.*.voiceAliases": "Optional provider voice alias map for Talk directives.",
+  "talk.providers.*.modelId": "Provider default model ID for Talk mode.",
+  "talk.providers.*.outputFormat": "Provider default output format for Talk mode.",
+  "talk.providers.*.apiKey": "Provider API key for Talk mode.",
+  "talk.voiceId":
+    "Legacy ElevenLabs default voice ID for Talk mode. Prefer talk.providers.elevenlabs.voiceId.",
+  "talk.voiceAliases":
+    'Use this legacy ElevenLabs voice alias map (for example {"Clawd":"EXAVITQu4vr4xnSDxMaL"}) only during migration. Prefer talk.providers.elevenlabs.voiceAliases.',
+  "talk.modelId":
+    "Legacy ElevenLabs model ID for Talk mode (default: eleven_v3). Prefer talk.providers.elevenlabs.modelId.",
+  "talk.outputFormat":
+    "Use this legacy ElevenLabs output format for Talk mode (for example pcm_44100 or mp3_44100_128) only during migration. Prefer talk.providers.elevenlabs.outputFormat.",
+  "talk.apiKey":
+    "Use this legacy ElevenLabs API key for Talk mode only during migration, and keep secrets in env-backed storage. Prefer talk.providers.elevenlabs.apiKey (fallback: ELEVENLABS_API_KEY).",
+  "talk.interruptOnSpeech":
+    "If true (default), stop assistant speech when the user starts speaking in Talk mode. Keep enabled for conversational turn-taking.",
   "agents.list.*.skills":
     "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
   "agents.list[].skills":
@@ -182,7 +206,9 @@ export const FIELD_HELP: Record<string, string> = {
   "browser.ssrfPolicy":
     "Server-side request forgery guardrail settings for browser/network fetch paths that could reach internal hosts. Keep restrictive defaults in production and open only explicitly approved targets.",
   "browser.ssrfPolicy.allowPrivateNetwork":
-    "Allows access to private-network address ranges from browser/network tooling when SSRF protections are active. Keep disabled unless internal-network access is required and separately controlled.",
+    "Legacy alias for browser.ssrfPolicy.dangerouslyAllowPrivateNetwork. Prefer the dangerously-named key so risk intent is explicit.",
+  "browser.ssrfPolicy.dangerouslyAllowPrivateNetwork":
+    "Allows access to private-network address ranges from browser tooling. Default is enabled for trusted-network operator setups; disable to enforce strict public-only resolution checks.",
   "browser.ssrfPolicy.allowedHostnames":
     "Explicit hostname allowlist exceptions for SSRF policy checks on browser/network requests. Keep this list minimal and review entries regularly to avoid stale broad access.",
   "browser.ssrfPolicy.hostnameAllowlist":
@@ -267,18 +293,6 @@ export const FIELD_HELP: Record<string, string> = {
   "canvasHost.liveReload":
     "Enables automatic live-reload behavior for canvas assets during development workflows. Keep disabled in production-like environments where deterministic output is preferred.",
   talk: "Talk-mode voice synthesis settings for voice identity, model selection, output format, and interruption behavior. Use this section to tune human-facing voice UX while controlling latency and cost.",
-  "talk.voiceId":
-    "Primary voice identifier used by talk mode when synthesizing spoken responses. Use a stable voice for consistent persona and switch only when experience goals change.",
-  "talk.voiceAliases":
-    "Alias map for human-friendly voice shortcuts to concrete voice IDs in talk workflows. Use aliases to simplify operator switching without exposing long provider-native IDs.",
-  "talk.modelId":
-    "Model override used for talk pipeline generation when voice workflows require different model behavior. Use this when speech output needs a specialized low-latency or style-tuned model.",
-  "talk.outputFormat":
-    "Audio output format for synthesized talk responses, depending on provider support and client playback expectations. Use formats compatible with your playback channel to avoid decode failures.",
-  "talk.interruptOnSpeech":
-    "When true, interrupts current speech playback on new speech/input events for more conversational turn-taking. Keep enabled for interactive voice UX and disable for uninterrupted long-form playback.",
-  "talk.apiKey":
-    "Optional talk-provider API key override used specifically for speech synthesis requests. Use env-backed secrets and set this only when talk traffic must use separate credentials.",
   "gateway.auth.token":
     "Required by default for gateway access (unless using Tailscale Serve identity); required for non-loopback binds.",
   "gateway.auth.password": "Required for Tailscale funnel.",
@@ -294,7 +308,9 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.controlUi.root":
     "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
   "gateway.controlUi.allowedOrigins":
-    "Allowed browser origins for Control UI/WebChat websocket connections (full origins only, e.g. https://control.example.com).",
+    "Allowed browser origins for Control UI/WebChat websocket connections (full origins only, e.g. https://control.example.com). Required for non-loopback Control UI deployments unless dangerous Host-header fallback is explicitly enabled.",
+  "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback":
+    "DANGEROUS toggle that enables Host-header based origin fallback for Control UI/WebChat websocket checks. This mode is supported when your deployment intentionally relies on Host-header origin policy; explicit gateway.controlUi.allowedOrigins remains the recommended hardened default.",
   "gateway.controlUi.allowInsecureAuth":
     "Loosens strict browser auth checks for Control UI when you must run a non-standard setup. Keep this off unless you trust your network and proxy path, because impersonation risk is higher.",
   "gateway.controlUi.dangerouslyDisableDeviceAuth":
@@ -544,11 +560,22 @@ export const FIELD_HELP: Record<string, string> = {
     'Text suffix for cross-context markers (supports "{channel}").',
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
-  "tools.web.search.provider": 'Search provider ("brave" or "perplexity").',
+  "tools.web.search.provider":
+    'Search provider ("brave", "perplexity", "grok", "gemini", or "kimi"). Auto-detected from available API keys if omitted.',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",
   "tools.web.search.cacheTtlMinutes": "Cache TTL in minutes for web_search results.",
+  "tools.web.search.gemini.apiKey":
+    "Gemini API key for Google Search grounding (fallback: GEMINI_API_KEY env var).",
+  "tools.web.search.gemini.model": 'Gemini model override (default: "gemini-2.5-flash").',
+  "tools.web.search.grok.apiKey": "Grok (xAI) API key (fallback: XAI_API_KEY env var).",
+  "tools.web.search.grok.model": 'Grok model override (default: "grok-4-1-fast").',
+  "tools.web.search.kimi.apiKey":
+    "Moonshot/Kimi API key (fallback: KIMI_API_KEY or MOONSHOT_API_KEY env var).",
+  "tools.web.search.kimi.baseUrl":
+    'Kimi base URL override (default: "https://api.moonshot.ai/v1").',
+  "tools.web.search.kimi.model": 'Kimi model override (default: "moonshot-v1-128k").',
   "tools.web.search.perplexity.apiKey":
     "Perplexity or OpenRouter API key (fallback: PERPLEXITY_API_KEY or OPENROUTER_API_KEY env var).",
   "tools.web.search.perplexity.baseUrl":
@@ -984,6 +1011,12 @@ export const FIELD_HELP: Record<string, string> = {
     "Caps total session entry count retained in the store to prevent unbounded growth over time. Use lower limits for constrained environments, or higher limits when longer history is required.",
   "session.maintenance.rotateBytes":
     "Rotates the session store when file size exceeds a threshold such as `10mb` or `1gb`. Use this to bound single-file growth and keep backup/restore operations manageable.",
+  "session.maintenance.resetArchiveRetention":
+    "Retention for reset transcript archives (`*.reset.<timestamp>`). Accepts a duration (for example `30d`), or `false` to disable cleanup. Defaults to pruneAfter so reset artifacts do not grow forever.",
+  "session.maintenance.maxDiskBytes":
+    "Optional per-agent sessions-directory disk budget (for example `500mb`). Use this to cap session storage per agent; when exceeded, warn mode reports pressure and enforce mode performs oldest-first cleanup.",
+  "session.maintenance.highWaterBytes":
+    "Target size after disk-budget cleanup (high-water mark). Defaults to 80% of maxDiskBytes; set explicitly for tighter reclaim behavior on constrained disks.",
   cron: "Global scheduler settings for stored cron jobs, run concurrency, delivery fallback, and run-session retention. Keep defaults unless you are scaling job volume or integrating external webhook receivers.",
   "cron.enabled":
     "Enables cron job execution for stored schedules managed by the gateway. Keep enabled for normal reminder/automation flows, and disable only to pause all cron execution without deleting jobs.",
@@ -997,6 +1030,12 @@ export const FIELD_HELP: Record<string, string> = {
     "Bearer token attached to cron webhook POST deliveries when webhook mode is used. Prefer secret/env substitution and rotate this token regularly if shared webhook endpoints are internet-reachable.",
   "cron.sessionRetention":
     "Controls how long completed cron run sessions are kept before pruning (`24h`, `7d`, `1h30m`, or `false` to disable pruning; default: `24h`). Use shorter retention to reduce storage growth on high-frequency schedules.",
+  "cron.runLog":
+    "Pruning controls for per-job cron run history files under `cron/runs/<jobId>.jsonl`, including size and line retention.",
+  "cron.runLog.maxBytes":
+    "Maximum bytes per cron run-log file before pruning rewrites to the last keepLines entries (for example `2mb`, default `2000000`).",
+  "cron.runLog.keepLines":
+    "How many trailing run-log lines to retain when a file exceeds maxBytes (default `2000`). Increase for longer forensic history or lower for smaller disks.",
   hooks:
     "Inbound webhook automation surface for mapping external events into wake or agent actions in OpenClaw. Keep this locked down with explicit token/session/agent controls before exposing it beyond trusted networks.",
   "hooks.enabled":
