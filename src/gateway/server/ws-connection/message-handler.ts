@@ -78,6 +78,7 @@ import {
   resolveControlUiAuthPolicy,
   shouldSkipControlUiPairing,
 } from "./connect-policy.js";
+import { isUnauthorizedRoleError, UnauthorizedFloodGuard } from "./unauthorized-flood-guard.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
@@ -190,6 +191,7 @@ export function attachGatewayWsMessageHandler(params: {
   }
 
   const isWebchatConnect = (p: ConnectParams | null | undefined) => isWebchatClient(p?.client);
+  const unauthorizedFloodGuard = new UnauthorizedFloodGuard();
 
   socket.on("message", async (data) => {
     if (isClosed()) {
@@ -332,6 +334,8 @@ export function attachGatewayWsMessageHandler(params: {
             requestHost,
             origin: requestOrigin,
             allowedOrigins: configSnapshot.gateway?.controlUi?.allowedOrigins,
+            allowHostHeaderOriginFallback:
+              configSnapshot.gateway?.controlUi?.dangerouslyAllowHostHeaderOriginFallback === true,
           });
           if (!originCheck.ok) {
             const errorMessage =
@@ -423,11 +427,17 @@ export function attachGatewayWsMessageHandler(params: {
           if (!device) {
             clearUnboundScopes();
           }
+          const trustedProxyAuthOk =
+            isControlUi &&
+            resolvedAuth.mode === "trusted-proxy" &&
+            authOk &&
+            authMethod === "trusted-proxy";
           const decision = evaluateMissingDeviceIdentity({
             hasDeviceIdentity: Boolean(device),
             role,
             isControlUi,
             controlUiAuthPolicy,
+            trustedProxyAuthOk,
             sharedAuthOk,
             authOk,
             hasSharedAuth,
@@ -559,8 +569,13 @@ export function attachGatewayWsMessageHandler(params: {
         // In that case, don't force device pairing on first connect.
         const skipPairingForOperatorSharedAuth =
           role === "operator" && sharedAuthOk && !isControlUi && !isWebchat;
+        const trustedProxyAuthOk =
+          isControlUi &&
+          resolvedAuth.mode === "trusted-proxy" &&
+          authOk &&
+          authMethod === "trusted-proxy";
         const skipPairing =
-          shouldSkipControlUiPairing(controlUiAuthPolicy, sharedAuthOk) ||
+          shouldSkipControlUiPairing(controlUiAuthPolicy, sharedAuthOk, trustedProxyAuthOk) ||
           skipPairingForOperatorSharedAuth;
         if (device && devicePublicKey && !skipPairing) {
           const formatAuditList = (items: string[] | undefined): string => {
@@ -908,6 +923,33 @@ export function attachGatewayWsMessageHandler(params: {
         meta?: Record<string, unknown>,
       ) => {
         send({ type: "res", id: req.id, ok, payload, error });
+        const unauthorizedRoleError = isUnauthorizedRoleError(error);
+        let logMeta = meta;
+        if (unauthorizedRoleError) {
+          const unauthorizedDecision = unauthorizedFloodGuard.registerUnauthorized();
+          if (unauthorizedDecision.suppressedSinceLastLog > 0) {
+            logMeta = {
+              ...logMeta,
+              suppressedUnauthorizedResponses: unauthorizedDecision.suppressedSinceLastLog,
+            };
+          }
+          if (!unauthorizedDecision.shouldLog) {
+            return;
+          }
+          if (unauthorizedDecision.shouldClose) {
+            setCloseCause("repeated-unauthorized-requests", {
+              unauthorizedCount: unauthorizedDecision.count,
+              method: req.method,
+            });
+            queueMicrotask(() => close(1008, "repeated unauthorized calls"));
+          }
+          logMeta = {
+            ...logMeta,
+            unauthorizedCount: unauthorizedDecision.count,
+          };
+        } else {
+          unauthorizedFloodGuard.reset();
+        }
         logWs("out", "res", {
           connId,
           id: req.id,
@@ -915,7 +957,7 @@ export function attachGatewayWsMessageHandler(params: {
           method: req.method,
           errorCode: error?.code,
           errorMessage: error?.message,
-          ...meta,
+          ...logMeta,
         });
       };
 

@@ -13,6 +13,7 @@ export type AuthChoice =
   | "openai-codex"
   | "openai-api-key"
   | "openrouter-api-key"
+  | "kilocode-api-key"
   | "litellm-api-key"
   | "aimlapi-api-key"
   | "ai-gateway-api-key"
@@ -59,6 +60,7 @@ export type AuthChoiceGroupId =
   | "google"
   | "copilot"
   | "openrouter"
+  | "kilocode"
   | "aimlapi"
   | "litellm"
   | "ai-gateway"
@@ -110,6 +112,7 @@ export type OnboardOptions = {
   openaiApiKey?: string;
   mistralApiKey?: string;
   openrouterApiKey?: string;
+  kilocodeApiKey?: string;
   litellmApiKey?: string;
   aimlapiApiKey?: string;
   aiGatewayApiKey?: string;

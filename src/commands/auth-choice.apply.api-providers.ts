@@ -23,6 +23,8 @@ import {
   applyAuthProfileConfig,
   applyCloudflareAiGatewayConfig,
   applyCloudflareAiGatewayProviderConfig,
+  applyKilocodeConfig,
+  applyKilocodeProviderConfig,
   applyQianfanConfig,
   applyQianfanProviderConfig,
   applyKimiCodeConfig,
@@ -53,6 +55,7 @@ import {
   applyZaiProviderConfig,
   AIMLAPI_DEFAULT_MODEL_REF,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
+  KILOCODE_DEFAULT_MODEL_REF,
   KIMI_CODING_MODEL_REF,
   LITELLM_DEFAULT_MODEL_REF,
   MISTRAL_DEFAULT_MODEL_REF,
@@ -67,6 +70,7 @@ import {
   setCloudflareAiGatewayConfig,
   setQianfanApiKey,
   setGeminiApiKey,
+  setKilocodeApiKey,
   setLitellmApiKey,
   setKimiCodingApiKey,
   setMistralApiKey,
@@ -102,6 +106,7 @@ const API_KEY_TOKEN_PROVIDER_AUTH_CHOICE: Record<string, AuthChoice> = {
   huggingface: "huggingface-api-key",
   mistral: "mistral-api-key",
   opencode: "opencode-zen",
+  kilocode: "kilocode-api-key",
   qianfan: "qianfan-api-key",
 };
 
@@ -180,7 +185,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     applyDefaultConfig: applyMoonshotConfig,
     applyProviderConfig: applyMoonshotProviderConfig,
   },
-
   "moonshot-api-key-cn": {
     provider: "moonshot",
     profileId: "moonshot:default",
@@ -192,7 +196,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     applyDefaultConfig: applyMoonshotConfigCn,
     applyProviderConfig: applyMoonshotProviderConfigCn,
   },
-
   "kimi-code-api-key": {
     provider: "kimi-coding",
     profileId: "kimi-coding:default",
@@ -210,7 +213,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     ].join("\n"),
     noteTitle: "Kimi Coding",
   },
-
   "xiaomi-api-key": {
     provider: "xiaomi",
     profileId: "xiaomi:default",
@@ -223,7 +225,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     applyProviderConfig: applyXiaomiProviderConfig,
     noteDefault: XIAOMI_DEFAULT_MODEL_REF,
   },
-
   "mistral-api-key": {
     provider: "mistral",
     profileId: "mistral:default",
@@ -236,7 +237,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     applyProviderConfig: applyMistralProviderConfig,
     noteDefault: MISTRAL_DEFAULT_MODEL_REF,
   },
-
   "venice-api-key": {
     provider: "venice",
     profileId: "venice:default",
@@ -255,7 +255,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     ].join("\n"),
     noteTitle: "Venice AI",
   },
-
   "opencode-zen": {
     provider: "opencode",
     profileId: "opencode:default",
@@ -274,7 +273,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     ].join("\n"),
     noteTitle: "OpenCode Zen",
   },
-
   "together-api-key": {
     provider: "together",
     profileId: "together:default",
@@ -292,7 +290,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     ].join("\n"),
     noteTitle: "Together AI",
   },
-
   "qianfan-api-key": {
     provider: "qianfan",
     profileId: "qianfan:default",
@@ -310,7 +307,18 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     ].join("\n"),
     noteTitle: "QIANFAN",
   },
-
+  "kilocode-api-key": {
+    provider: "kilocode",
+    profileId: "kilocode:default",
+    expectedProviders: ["kilocode"],
+    envLabel: "KILOCODE_API_KEY",
+    promptMessage: "Enter Kilo Gateway API key",
+    setCredential: setKilocodeApiKey,
+    defaultModel: KILOCODE_DEFAULT_MODEL_REF,
+    applyDefaultConfig: applyKilocodeConfig,
+    applyProviderConfig: applyKilocodeProviderConfig,
+    noteDefault: KILOCODE_DEFAULT_MODEL_REF,
+  },
   "synthetic-api-key": {
     provider: "synthetic",
     profileId: "synthetic:default",
@@ -331,7 +339,6 @@ export async function applyAuthChoiceApiProviders(
 ): Promise<ApplyAuthChoiceResult | null> {
   let nextConfig = params.config;
   let agentModelOverride: string | undefined;
-
   const noteAgentModel = createAuthChoiceAgentModelNoter(params);
   const applyProviderDefaultModel = createAuthChoiceDefaultModelApplier(
     params,
@@ -344,7 +351,6 @@ export async function applyAuthChoiceApiProviders(
   );
 
   let authChoice = params.authChoice;
-
   const normalizedTokenProvider = normalizeTokenProviderInput(params.opts?.tokenProvider);
   if (authChoice === "apiKey" && params.opts?.tokenProvider) {
     if (normalizedTokenProvider !== "anthropic" && normalizedTokenProvider !== "openai") {
@@ -376,7 +382,9 @@ export async function applyAuthChoiceApiProviders(
     promptMessage: string;
     setCredential: (apiKey: string) => void | Promise<void>;
     defaultModel: string;
-    applyDefaultConfig: (config: ApplyAuthChoiceParams["config"]) => ApplyAuthChoiceParams["config"];
+    applyDefaultConfig: (
+      config: ApplyAuthChoiceParams["config"],
+    ) => ApplyAuthChoiceParams["config"];
     applyProviderConfig: (
       config: ApplyAuthChoiceParams["config"],
     ) => ApplyAuthChoiceParams["config"];
@@ -409,7 +417,6 @@ export async function applyAuthChoiceApiProviders(
       provider,
       mode: "api_key",
     });
-
     await applyProviderDefaultModel({
       defaultModel,
       applyDefaultConfig,
@@ -427,9 +434,8 @@ export async function applyAuthChoiceApiProviders(
   if (authChoice === "litellm-api-key") {
     const store = ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false });
     const profileOrder = resolveAuthProfileOrder({ cfg: nextConfig, store, provider: "litellm" });
-    const existingProfileId = profileOrder.find((pid) => Boolean(store.profiles[pid]));
+    const existingProfileId = profileOrder.find((profileId) => Boolean(store.profiles[profileId]));
     const existingCred = existingProfileId ? store.profiles[existingProfileId] : undefined;
-
     let profileId = "litellm:default";
     let hasCredential = Boolean(existingProfileId && existingCred?.type === "api_key");
     if (hasCredential && existingProfileId) {
@@ -448,11 +454,8 @@ export async function applyAuthChoiceApiProviders(
         validate: validateApiKeyInput,
         prompter: params.prompter,
         setCredential: async (apiKey) => setLitellmApiKey(apiKey, params.agentDir),
-        noteMessage: [
-          "LiteLLM provides a unified API to 100+ LLM providers.",
-          "Get your API key from your LiteLLM proxy or https://litellm.ai",
-          "Default proxy runs on http://localhost:4000",
-        ].join("\n"),
+        noteMessage:
+          "LiteLLM provides a unified API to 100+ LLM providers.\nGet your API key from your LiteLLM proxy or https://litellm.ai\nDefault proxy runs on http://localhost:4000",
         noteTitle: "LiteLLM",
       });
       hasCredential = true;
@@ -465,14 +468,12 @@ export async function applyAuthChoiceApiProviders(
         mode: "api_key",
       });
     }
-
     await applyProviderDefaultModel({
       defaultModel: LITELLM_DEFAULT_MODEL_REF,
       applyDefaultConfig: applyLitellmConfig,
       applyProviderConfig: applyLitellmProviderConfig,
       noteDefault: LITELLM_DEFAULT_MODEL_REF,
     });
-
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -484,7 +485,8 @@ export async function applyAuthChoiceApiProviders(
       expectedProviders: simpleApiKeyProviderFlow.expectedProviders,
       envLabel: simpleApiKeyProviderFlow.envLabel,
       promptMessage: simpleApiKeyProviderFlow.promptMessage,
-      setCredential: async (apiKey) => simpleApiKeyProviderFlow.setCredential(apiKey, params.agentDir),
+      setCredential: async (apiKey) =>
+        simpleApiKeyProviderFlow.setCredential(apiKey, params.agentDir),
       defaultModel: simpleApiKeyProviderFlow.defaultModel,
       applyDefaultConfig: simpleApiKeyProviderFlow.applyDefaultConfig,
       applyProviderConfig: simpleApiKeyProviderFlow.applyProviderConfig,
@@ -527,9 +529,7 @@ export async function applyAuthChoiceApiProviders(
     const envKey = resolveEnvApiKey("cloudflare-ai-gateway");
     if (!resolvedApiKey && envKey) {
       const useExisting = await params.prompter.confirm({
-        message: `Use existing CLOUDFLARE_AI_GATEWAY_API_KEY (${envKey.source}, ${formatApiKeyPreview(
-          envKey.apiKey,
-        )})?`,
+        message: `Use existing CLOUDFLARE_AI_GATEWAY_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
         initialValue: true,
       });
       if (useExisting) {
@@ -553,13 +553,11 @@ export async function applyAuthChoiceApiProviders(
     }
 
     await setCloudflareAiGatewayConfig(accountId, gatewayId, resolvedApiKey, params.agentDir);
-
     nextConfig = applyAuthProfileConfig(nextConfig, {
       profileId: "cloudflare-ai-gateway:default",
       provider: "cloudflare-ai-gateway",
       mode: "api_key",
     });
-
     await applyProviderDefaultModel({
       defaultModel: CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
       applyDefaultConfig: (cfg) =>
@@ -574,7 +572,6 @@ export async function applyAuthChoiceApiProviders(
         }),
       noteDefault: CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
     });
-
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -591,24 +588,24 @@ export async function applyAuthChoiceApiProviders(
       prompter: params.prompter,
       setCredential: async (apiKey) => setGeminiApiKey(apiKey, params.agentDir),
     });
-
     nextConfig = applyAuthProfileConfig(nextConfig, {
       profileId: "google:default",
       provider: "google",
       mode: "api_key",
     });
-
     if (params.setDefaultModel) {
       const applied = applyGoogleGeminiModelDefault(nextConfig);
       nextConfig = applied.next;
       if (applied.changed) {
-        await params.prompter.note(`Default model set to ${GOOGLE_GEMINI_DEFAULT_MODEL}`, "Model configured");
+        await params.prompter.note(
+          `Default model set to ${GOOGLE_GEMINI_DEFAULT_MODEL}`,
+          "Model configured",
+        );
       }
     } else {
       agentModelOverride = GOOGLE_GEMINI_DEFAULT_MODEL;
       await noteAgentModel(GOOGLE_GEMINI_DEFAULT_MODEL);
     }
-
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -631,9 +628,10 @@ export async function applyAuthChoiceApiProviders(
       normalize: normalizeApiKeyInput,
       validate: validateApiKeyInput,
       prompter: params.prompter,
-      setCredential: async (k) => setZaiApiKey(k, params.agentDir),
+      setCredential: async (apiKey) => setZaiApiKey(apiKey, params.agentDir),
     });
 
+    // zai-api-key: auto-detect endpoint + choose a working default model.
     let modelIdOverride: string | undefined;
     if (!endpoint) {
       const detected = await detectZaiEndpoint({ apiKey });
@@ -678,16 +676,15 @@ export async function applyAuthChoiceApiProviders(
     });
 
     const defaultModel = modelIdOverride ? `zai/${modelIdOverride}` : ZAI_DEFAULT_MODEL_REF;
-
     await applyProviderDefaultModel({
       defaultModel,
-      applyDefaultConfig: (cfg) =>
-        applyZaiConfig(cfg, {
+      applyDefaultConfig: (config) =>
+        applyZaiConfig(config, {
           endpoint,
           ...(modelIdOverride ? { modelId: modelIdOverride } : {}),
         }),
-      applyProviderConfig: (cfg) =>
-        applyZaiProviderConfig(cfg, {
+      applyProviderConfig: (config) =>
+        applyZaiProviderConfig(config, {
           endpoint,
           ...(modelIdOverride ? { modelId: modelIdOverride } : {}),
         }),
