@@ -405,6 +405,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.heartbeat.suppressToolErrorWarnings": "Heartbeat Suppress Tool Error Warnings",
   "agents.defaults.sandbox.browser.network": "Sandbox Browser Network",
   "agents.defaults.sandbox.browser.cdpSourceRange": "Sandbox Browser CDP Source Port Range",
+  "agents.defaults.sandbox.docker.dangerouslyAllowContainerNamespaceJoin":
+    "Sandbox Docker Allow Container Namespace Join",
   commands: "Commands",
   "commands.native": "Native Commands",
   "commands.nativeSkills": "Native Skill Commands",
@@ -675,6 +677,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "channels.discord.intents.guildMembers": "Discord Guild Members Intent",
   "channels.discord.voice.enabled": "Discord Voice Enabled",
   "channels.discord.voice.autoJoin": "Discord Voice Auto-Join",
+  "channels.discord.voice.daveEncryption": "Discord Voice DAVE Encryption",
+  "channels.discord.voice.decryptionFailureTolerance": "Discord Voice Decrypt Failure Tolerance",
   "channels.discord.voice.tts": "Discord Voice Text-to-Speech",
   "channels.discord.pluralkit.enabled": "Discord PluralKit Enabled",
   "channels.discord.pluralkit.token": "Discord PluralKit Token",
@@ -713,6 +717,8 @@ export const FIELD_LABELS: Record<string, string> = {
     "Agent Heartbeat Suppress Tool Error Warnings",
   "agents.list[].sandbox.browser.network": "Agent Sandbox Browser Network",
   "agents.list[].sandbox.browser.cdpSourceRange": "Agent Sandbox Browser CDP Source Port Range",
+  "agents.list[].sandbox.docker.dangerouslyAllowContainerNamespaceJoin":
+    "Agent Sandbox Docker Allow Container Namespace Join",
   "discovery.mdns.mode": "mDNS Discovery Mode",
   plugins: "Plugins",
   "plugins.enabled": "Enable Plugins",

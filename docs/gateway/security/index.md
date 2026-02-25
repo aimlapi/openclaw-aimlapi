@@ -244,6 +244,7 @@ High-signal `checkId` values you will most likely see in real deployments (not e
 | `hooks.request_session_key_prefixes_missing`       | warn/critical | No bound on external session key shapes                                            | `hooks.allowedSessionKeyPrefixes`                                                                 | no       |
 | `logging.redact_off`                               | warn          | Sensitive values leak to logs/status                                               | `logging.redactSensitive`                                                                         | yes      |
 | `sandbox.docker_config_mode_off`                   | warn          | Sandbox Docker config present but inactive                                         | `agents.*.sandbox.mode`                                                                           | no       |
+| `sandbox.dangerous_network_mode`                   | critical      | Sandbox Docker network uses `host` or `container:*` namespace-join mode            | `agents.*.sandbox.docker.network`                                                                 | no       |
 | `tools.exec.host_sandbox_no_sandbox_defaults`      | warn          | `exec host=sandbox` resolves to host exec when sandbox is off                      | `tools.exec.host`, `agents.defaults.sandbox.mode`                                                 | no       |
 | `tools.exec.host_sandbox_no_sandbox_agents`        | warn          | Per-agent `exec host=sandbox` resolves to host exec when sandbox is off            | `agents.list[].tools.exec.host`, `agents.list[].sandbox.mode`                                     | no       |
 | `tools.exec.safe_bins_interpreter_unprofiled`      | warn          | Interpreter/runtime bins in `safeBins` without explicit profiles broaden exec risk | `tools.exec.safeBins`, `tools.exec.safeBinProfiles`, `agents.list[].tools.exec.*`                 | no       |
@@ -299,8 +300,10 @@ schema:
 - `channels.mattermost.accounts.<accountId>.dangerouslyAllowNameMatching` (extension channel)
 - `agents.defaults.sandbox.docker.dangerouslyAllowReservedContainerTargets`
 - `agents.defaults.sandbox.docker.dangerouslyAllowExternalBindSources`
+- `agents.defaults.sandbox.docker.dangerouslyAllowContainerNamespaceJoin`
 - `agents.list[<index>].sandbox.docker.dangerouslyAllowReservedContainerTargets`
 - `agents.list[<index>].sandbox.docker.dangerouslyAllowExternalBindSources`
+- `agents.list[<index>].sandbox.docker.dangerouslyAllowContainerNamespaceJoin`
 
 ## Reverse Proxy Configuration
 
@@ -834,6 +837,7 @@ Additional hardening options:
 
 - `tools.exec.applyPatch.workspaceOnly: true` (default): ensures `apply_patch` cannot write/delete outside the workspace directory even when sandboxing is off. Set to `false` only if you intentionally want `apply_patch` to touch files outside the workspace.
 - `tools.fs.workspaceOnly: true` (optional): restricts `read`/`write`/`edit`/`apply_patch` paths and native prompt image auto-load paths to the workspace directory (useful if you allow absolute paths today and want a single guardrail).
+- Keep filesystem roots narrow: avoid broad roots like your home directory for agent workspaces/sandbox workspaces. Broad roots can expose sensitive local files (for example state/config under `~/.openclaw`) to filesystem tools.
 
 ### 5) Secure baseline (copy/paste)
 
