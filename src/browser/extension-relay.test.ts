@@ -208,6 +208,84 @@ describe("chrome extension relay server", () => {
     expect(err.message).toContain("401");
   });
 
+  it("returns 400 for malformed percent-encoding in target action routes", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    await ensureChromeExtensionRelayServer({ cdpUrl });
+
+    const res = await fetch(`${cdpUrl}/json/activate/%E0%A4%A`, {
+      headers: relayAuthHeaders(cdpUrl),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("invalid targetId encoding");
+  });
+
+  it("deduplicates concurrent relay starts for the same requested port", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    const [first, second] = await Promise.all([
+      ensureChromeExtensionRelayServer({ cdpUrl }),
+      ensureChromeExtensionRelayServer({ cdpUrl }),
+    ]);
+    expect(first).toBe(second);
+    expect(first.port).toBe(port);
+  });
+
+  it("allows CORS preflight from chrome-extension origins", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    await ensureChromeExtensionRelayServer({ cdpUrl });
+
+    const origin = "chrome-extension://abcdefghijklmnop";
+    const res = await fetch(`${cdpUrl}/json/version`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "x-openclaw-relay-token",
+      },
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(res.headers.get("access-control-allow-headers") ?? "").toContain(
+      "x-openclaw-relay-token",
+    );
+  });
+
+  it("rejects CORS preflight from non-extension origins", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    await ensureChromeExtensionRelayServer({ cdpUrl });
+
+    const res = await fetch(`${cdpUrl}/json/version`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns CORS headers on JSON responses for extension origins", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    await ensureChromeExtensionRelayServer({ cdpUrl });
+
+    const origin = "chrome-extension://abcdefghijklmnop";
+    const res = await fetch(`${cdpUrl}/json/version`, {
+      headers: {
+        Origin: origin,
+        ...relayAuthHeaders(cdpUrl),
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+  });
+
   it("rejects extension websocket access without relay auth token", async () => {
     const port = await getFreePort();
     cdpUrl = `http://127.0.0.1:${port}`;
@@ -275,6 +353,19 @@ describe("chrome extension relay server", () => {
     );
     await waitForOpen(ext);
     ext.close();
+  });
+
+  it("accepts /json endpoints with relay token query param", async () => {
+    const port = await getFreePort();
+    cdpUrl = `http://127.0.0.1:${port}`;
+    await ensureChromeExtensionRelayServer({ cdpUrl });
+
+    const token = relayAuthHeaders(cdpUrl)["x-openclaw-relay-token"];
+    expect(token).toBeTruthy();
+    const versionRes = await fetch(
+      `${cdpUrl}/json/version?token=${encodeURIComponent(String(token))}`,
+    );
+    expect(versionRes.status).toBe(200);
   });
 
   it("accepts raw gateway token for relay auth compatibility", async () => {
