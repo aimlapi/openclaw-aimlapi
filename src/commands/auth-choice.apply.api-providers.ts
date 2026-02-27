@@ -6,6 +6,7 @@ import {
   validateApiKeyInput,
 } from "./auth-choice.api-key.js";
 import {
+  normalizeSecretInputModeInput,
   createAuthChoiceAgentModelNoter,
   createAuthChoiceDefaultModelApplier,
   createAuthChoiceModelStateBridge,
@@ -19,6 +20,7 @@ import {
   applyGoogleGeminiModelDefault,
   GOOGLE_GEMINI_DEFAULT_MODEL,
 } from "./google-gemini-model-default.js";
+import type { ApiKeyStorageOptions } from "./onboard-auth.credentials.js";
 import {
   applyAuthProfileConfig,
   applyCloudflareAiGatewayConfig,
@@ -56,12 +58,11 @@ import {
   AIMLAPI_DEFAULT_MODEL_REF,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
   KILOCODE_DEFAULT_MODEL_REF,
-  KIMI_CODING_MODEL_REF,
   LITELLM_DEFAULT_MODEL_REF,
-  MISTRAL_DEFAULT_MODEL_REF,
-  MOONSHOT_DEFAULT_MODEL_REF,
-  OPENCODE_ZEN_DEFAULT_MODEL,
   QIANFAN_DEFAULT_MODEL_REF,
+  KIMI_CODING_MODEL_REF,
+  MOONSHOT_DEFAULT_MODEL_REF,
+  MISTRAL_DEFAULT_MODEL_REF,
   SYNTHETIC_DEFAULT_MODEL_REF,
   TOGETHER_DEFAULT_MODEL_REF,
   VENICE_DEFAULT_MODEL_REF,
@@ -85,7 +86,8 @@ import {
   setZaiApiKey,
   ZAI_DEFAULT_MODEL_REF,
 } from "./onboard-auth.js";
-import type { AuthChoice } from "./onboard-types.js";
+import type { AuthChoice, SecretInputMode } from "./onboard-types.js";
+import { OPENCODE_ZEN_DEFAULT_MODEL } from "./opencode-zen-model-default.js";
 import { detectZaiEndpoint } from "./zai-endpoint-detect.js";
 
 const API_KEY_TOKEN_PROVIDER_AUTH_CHOICE: Record<string, AuthChoice> = {
@@ -129,7 +131,11 @@ type SimpleApiKeyProviderFlow = {
   expectedProviders: string[];
   envLabel: string;
   promptMessage: string;
-  setCredential: (apiKey: string, agentDir?: string) => void | Promise<void>;
+  setCredential: (
+    apiKey: SecretInput,
+    agentDir?: string,
+    options?: ApiKeyStorageOptions,
+  ) => void | Promise<void>;
   defaultModel: string;
   applyDefaultConfig: ApiKeyProviderConfigApplier;
   applyProviderConfig: ApiKeyProviderConfigApplier;
@@ -154,7 +160,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     applyProviderConfig: applyVercelAiGatewayProviderConfig,
     noteDefault: VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF,
   },
-
   "aimlapi-api-key": {
     provider: "aimlapi",
     profileId: "aimlapi:default",
@@ -173,7 +178,6 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
     normalize: (value) => String(value ?? "").trim(),
     validate: (value) => (String(value ?? "").trim() ? undefined : "Required"),
   },
-
   "moonshot-api-key": {
     provider: "moonshot",
     profileId: "moonshot:default",
@@ -352,6 +356,7 @@ export async function applyAuthChoiceApiProviders(
 
   let authChoice = params.authChoice;
   const normalizedTokenProvider = normalizeTokenProviderInput(params.opts?.tokenProvider);
+  const requestedSecretInputMode = normalizeSecretInputModeInput(params.opts?.secretInputMode);
   if (authChoice === "apiKey" && params.opts?.tokenProvider) {
     if (normalizedTokenProvider !== "anthropic" && normalizedTokenProvider !== "openai") {
       authChoice = API_KEY_TOKEN_PROVIDER_AUTH_CHOICE[normalizedTokenProvider ?? ""] ?? authChoice;
@@ -380,7 +385,7 @@ export async function applyAuthChoiceApiProviders(
     expectedProviders: string[];
     envLabel: string;
     promptMessage: string;
-    setCredential: (apiKey: string) => void | Promise<void>;
+    setCredential: (apiKey: SecretInput, mode?: SecretInputMode) => void | Promise<void>;
     defaultModel: string;
     applyDefaultConfig: (
       config: ApplyAuthChoiceParams["config"],
@@ -399,11 +404,13 @@ export async function applyAuthChoiceApiProviders(
       token: params.opts?.token,
       provider,
       tokenProvider,
+      secretInputMode: requestedSecretInputMode,
+      config: nextConfig,
       expectedProviders,
       envLabel,
       promptMessage,
-      setCredential: async (apiKey) => {
-        await setCredential(apiKey);
+      setCredential: async (apiKey, mode) => {
+        await setCredential(apiKey, mode);
       },
       noteMessage,
       noteTitle,
@@ -446,6 +453,8 @@ export async function applyAuthChoiceApiProviders(
       await ensureApiKeyFromOptionEnvOrPrompt({
         token: params.opts?.token,
         tokenProvider: normalizedTokenProvider,
+        secretInputMode: requestedSecretInputMode,
+        config: nextConfig,
         expectedProviders: ["litellm"],
         provider: "litellm",
         envLabel: "LITELLM_API_KEY",
@@ -453,7 +462,8 @@ export async function applyAuthChoiceApiProviders(
         normalize: normalizeApiKeyInput,
         validate: validateApiKeyInput,
         prompter: params.prompter,
-        setCredential: async (apiKey) => setLitellmApiKey(apiKey, params.agentDir),
+        setCredential: async (apiKey, mode) =>
+          setLitellmApiKey(apiKey, params.agentDir, { secretInputMode: mode }),
         noteMessage:
           "LiteLLM provides a unified API to 100+ LLM providers.\nGet your API key from your LiteLLM proxy or https://litellm.ai\nDefault proxy runs on http://localhost:4000",
         noteTitle: "LiteLLM",
@@ -485,8 +495,10 @@ export async function applyAuthChoiceApiProviders(
       expectedProviders: simpleApiKeyProviderFlow.expectedProviders,
       envLabel: simpleApiKeyProviderFlow.envLabel,
       promptMessage: simpleApiKeyProviderFlow.promptMessage,
-      setCredential: async (apiKey) =>
-        simpleApiKeyProviderFlow.setCredential(apiKey, params.agentDir),
+      setCredential: async (apiKey, mode) =>
+        simpleApiKeyProviderFlow.setCredential(apiKey, params.agentDir, {
+          secretInputMode: mode ?? requestedSecretInputMode,
+        }),
       defaultModel: simpleApiKeyProviderFlow.defaultModel,
       applyDefaultConfig: simpleApiKeyProviderFlow.applyDefaultConfig,
       applyProviderConfig: simpleApiKeyProviderFlow.applyProviderConfig,
@@ -520,39 +532,26 @@ export async function applyAuthChoiceApiProviders(
       }
     };
 
-    const optsApiKey = normalizeApiKeyInput(params.opts?.cloudflareAiGatewayApiKey ?? "");
-    let resolvedApiKey = "";
-    if (accountId && gatewayId && optsApiKey) {
-      resolvedApiKey = optsApiKey;
-    }
+    await ensureAccountGateway();
 
-    const envKey = resolveEnvApiKey("cloudflare-ai-gateway");
-    if (!resolvedApiKey && envKey) {
-      const useExisting = await params.prompter.confirm({
-        message: `Use existing CLOUDFLARE_AI_GATEWAY_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
-        initialValue: true,
-      });
-      if (useExisting) {
-        await ensureAccountGateway();
-        resolvedApiKey = normalizeApiKeyInput(envKey.apiKey);
-      }
-    }
+    await ensureApiKeyFromOptionEnvOrPrompt({
+      token: params.opts?.cloudflareAiGatewayApiKey,
+      tokenProvider: "cloudflare-ai-gateway",
+      secretInputMode: requestedSecretInputMode,
+      config: nextConfig,
+      expectedProviders: ["cloudflare-ai-gateway"],
+      provider: "cloudflare-ai-gateway",
+      envLabel: "CLOUDFLARE_AI_GATEWAY_API_KEY",
+      promptMessage: "Enter Cloudflare AI Gateway API key",
+      normalize: normalizeApiKeyInput,
+      validate: validateApiKeyInput,
+      prompter: params.prompter,
+      setCredential: async (apiKey, mode) =>
+        setCloudflareAiGatewayConfig(accountId, gatewayId, apiKey, params.agentDir, {
+          secretInputMode: mode,
+        }),
+    });
 
-    if (!resolvedApiKey && optsApiKey) {
-      await ensureAccountGateway();
-      resolvedApiKey = optsApiKey;
-    }
-
-    if (!resolvedApiKey) {
-      await ensureAccountGateway();
-      const key = await params.prompter.text({
-        message: "Enter Cloudflare AI Gateway API key",
-        validate: validateApiKeyInput,
-      });
-      resolvedApiKey = normalizeApiKeyInput(String(key ?? ""));
-    }
-
-    await setCloudflareAiGatewayConfig(accountId, gatewayId, resolvedApiKey, params.agentDir);
     nextConfig = applyAuthProfileConfig(nextConfig, {
       profileId: "cloudflare-ai-gateway:default",
       provider: "cloudflare-ai-gateway",
@@ -580,13 +579,16 @@ export async function applyAuthChoiceApiProviders(
       token: params.opts?.token,
       provider: "google",
       tokenProvider: normalizedTokenProvider,
+      secretInputMode: requestedSecretInputMode,
+      config: nextConfig,
       expectedProviders: ["google"],
       envLabel: "GEMINI_API_KEY",
       promptMessage: "Enter Gemini API key",
       normalize: normalizeApiKeyInput,
       validate: validateApiKeyInput,
       prompter: params.prompter,
-      setCredential: async (apiKey) => setGeminiApiKey(apiKey, params.agentDir),
+      setCredential: async (apiKey, mode) =>
+        setGeminiApiKey(apiKey, params.agentDir, { secretInputMode: mode }),
     });
     nextConfig = applyAuthProfileConfig(nextConfig, {
       profileId: "google:default",
@@ -622,13 +624,16 @@ export async function applyAuthChoiceApiProviders(
       token: params.opts?.token,
       provider: "zai",
       tokenProvider: normalizedTokenProvider,
+      secretInputMode: requestedSecretInputMode,
+      config: nextConfig,
       expectedProviders: ["zai"],
       envLabel: "ZAI_API_KEY",
       promptMessage: "Enter Z.AI API key",
       normalize: normalizeApiKeyInput,
       validate: validateApiKeyInput,
       prompter: params.prompter,
-      setCredential: async (apiKey) => setZaiApiKey(apiKey, params.agentDir),
+      setCredential: async (apiKey, mode) =>
+        setZaiApiKey(apiKey, params.agentDir, { secretInputMode: mode }),
     });
 
     // zai-api-key: auto-detect endpoint + choose a working default model.
