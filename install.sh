@@ -1894,6 +1894,16 @@ resolve_beta_version() {
     echo "$beta"
 }
 
+resolve_next_version() {
+    local package_name="$1"
+    local next=""
+    next="$(npm view "$package_name" dist-tags.next 2>/dev/null || true)"
+    if [[ -z "$next" || "$next" == "undefined" || "$next" == "null" ]]; then
+        return 1
+    fi
+    echo "$next"
+}
+
 install_openclaw() {
     local package_name="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
     if [[ "$USE_BETA" == "1" ]]; then
@@ -1935,9 +1945,15 @@ install_openclaw() {
 
     if [[ "${OPENCLAW_VERSION}" == "latest" ]]; then
         if ! resolve_openclaw_bin &> /dev/null; then
-            ui_warn "npm install ${package_name}@latest failed; retrying ${package_name}@next"
-            cleanup_npm_openclaw_paths
-            install_openclaw_npm "${package_name}@next"
+            local next_version=""
+            next_version="$(resolve_next_version "$package_name" || true)"
+            if [[ -n "$next_version" ]]; then
+                ui_warn "npm install ${package_name}@latest failed; retrying ${package_name}@next"
+                cleanup_npm_openclaw_paths
+                install_openclaw_npm "${package_name}@next"
+            else
+                ui_warn "npm install ${package_name}@latest failed and dist-tag next is unavailable"
+            fi
         fi
     fi
 
