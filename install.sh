@@ -96,7 +96,7 @@ gum_is_tty() {
     if [[ -t 2 || -t 1 ]]; then
         return 0
     fi
-    if [[ -r /dev/tty && -w /dev/tty ]]; then
+    if ! is_non_interactive_shell && [[ -r /dev/tty && -w /dev/tty ]]; then
         return 0
     fi
     return 1
@@ -794,7 +794,10 @@ install_openclaw_npm() {
 
         local first_line=""
         first_line="$(head -n 1 "$entry" 2>/dev/null || true)"
-        if [[ "$first_line" == "#!"* ]] || grep -qE '^[[:space:]]*exec[[:space:]]+node[[:space:]]+' "$entry" 2>/dev/null; then
+        # Valid JS entries often start with "#!/usr/bin/env node".
+        # Treat only shell shebang wrappers (or explicit shell exec wrappers)
+        # as corruption.
+        if [[ "$first_line" =~ ^#!/usr/bin/env[[:space:]]+(bash|sh)$ ]] || [[ "$first_line" =~ ^#!/bin/(bash|sh)$ ]] || grep -qE '^[[:space:]]*exec[[:space:]]+node[[:space:]]+' "$entry" 2>/dev/null; then
             return 0
         fi
         return 1
@@ -1317,6 +1320,44 @@ print_active_node_paths() {
     return 0
 }
 
+
+ensure_linux_node22_active() {
+    if [[ "$OS" != "linux" ]]; then
+        return 0
+    fi
+
+    local major=""
+    major="$(node_major_version || true)"
+    if [[ -n "$major" && "$major" -ge 22 ]]; then
+        return 0
+    fi
+
+    local candidate=""
+    local candidate_major=""
+    for candidate in /usr/bin/node /usr/local/bin/node; do
+        if [[ ! -x "$candidate" ]]; then
+            continue
+        fi
+        candidate_major="$($candidate -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || true)"
+        if [[ "$candidate_major" =~ ^[0-9]+$ ]] && [[ "$candidate_major" -ge 22 ]]; then
+            export PATH="$(dirname "$candidate"):$PATH"
+            refresh_shell_command_cache
+            major="$(node_major_version || true)"
+            if [[ -n "$major" && "$major" -ge 22 ]]; then
+                ui_info "Switched active Node.js runtime to $(node -v 2>/dev/null || true) ($(command -v node 2>/dev/null || true))"
+                return 0
+            fi
+        fi
+    done
+
+    local active_path active_version
+    active_path="$(command -v node 2>/dev/null || echo "not found")"
+    active_version="$(node -v 2>/dev/null || echo "missing")"
+    ui_error "Node.js v22 was installed but this shell is using ${active_version} (${active_path})"
+    echo "Ensure Node.js v22+ comes first on PATH, then rerun installer."
+    return 1
+}
+
 ensure_macos_node22_active() {
     if [[ "$OS" != "macos" ]]; then
         return 0
@@ -1430,6 +1471,10 @@ install_node() {
         else
             ui_error "Could not detect package manager"
             echo "Please install Node.js 22+ manually: https://nodejs.org"
+            exit 1
+        fi
+
+        if ! ensure_linux_node22_active; then
             exit 1
         fi
 
@@ -2451,7 +2496,7 @@ main() {
         ui_kv "Switch to npm" "curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash -s -- --install-method npm"
     elif [[ "$is_upgrade" == "true" ]]; then
         ui_info "Upgrade complete"
-        if [[ -r /dev/tty && -w /dev/tty ]]; then
+        if ! is_non_interactive_shell && [[ -r /dev/tty && -w /dev/tty ]]; then
             local claw="${OPENCLAW_BIN:-}"
             if [[ -z "$claw" ]]; then
                 claw="$(resolve_openclaw_bin || true)"
