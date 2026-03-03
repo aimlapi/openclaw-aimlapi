@@ -1530,31 +1530,57 @@ fix_npm_permissions() {
     ui_success "npm configured for user installs"
 }
 
+openclaw_candidate_bins() {
+    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+    echo "openclaw"
+    if [[ "$npm_package" != "openclaw" ]]; then
+        echo "$npm_package"
+    fi
+}
+
 ensure_openclaw_bin_link() {
     local npm_root=""
     npm_root="$(npm root -g 2>/dev/null || true)"
-    if [[ -z "$npm_root" || ! -d "$npm_root/openclaw" ]]; then
+    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+    if [[ -z "$npm_root" || ! -d "$npm_root/$npm_package" ]]; then
         return 1
     fi
+
     local npm_bin=""
     npm_bin="$(npm_global_bin_dir || true)"
     if [[ -z "$npm_bin" ]]; then
         return 1
     fi
+
     mkdir -p "$npm_bin"
-    if [[ ! -x "${npm_bin}/openclaw" ]]; then
-        ln -sf "$npm_root/openclaw/dist/entry.js" "${npm_bin}/openclaw"
-        ui_info "Created openclaw bin link at ${npm_bin}/openclaw"
+    if [[ -x "${npm_bin}/openclaw" ]]; then
+        return 0
     fi
-    return 0
+
+    if [[ -x "${npm_bin}/${npm_package}" ]]; then
+        ln -sf "${npm_bin}/${npm_package}" "${npm_bin}/openclaw"
+        ui_info "Created openclaw compatibility link at ${npm_bin}/openclaw"
+        return 0
+    fi
+
+    if [[ -f "$npm_root/$npm_package/dist/entry.js" ]]; then
+        ln -sf "$npm_root/$npm_package/dist/entry.js" "${npm_bin}/openclaw"
+        ui_info "Created openclaw bin link at ${npm_bin}/openclaw"
+        return 0
+    fi
+
+    return 1
 }
 
 # Check for existing OpenClaw installation
 check_existing_openclaw() {
-    if [[ -n "$(type -P openclaw 2>/dev/null || true)" ]]; then
-        ui_info "Existing OpenClaw installation detected, upgrading"
-        return 0
-    fi
+    local cmd=""
+    while IFS= read -r cmd; do
+        if [[ -n "$(type -P "$cmd" 2>/dev/null || true)" ]]; then
+            ui_info "Existing OpenClaw installation detected, upgrading"
+            return 0
+        fi
+    done < <(openclaw_candidate_bins)
     return 1
 }
 
@@ -1757,7 +1783,9 @@ maybe_nodenv_rehash() {
 }
 
 warn_openclaw_not_found() {
-    ui_warn "Installed, but openclaw is not discoverable on PATH in this shell"
+    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+    ui_warn "Installed, but OpenClaw CLI is not discoverable on PATH in this shell"
+    echo "  Tried commands: openclaw${npm_package:+, ${npm_package}}"
     echo "  Try: hash -r (bash) or rehash (zsh), then retry."
     local t=""
     t="$(type -t openclaw 2>/dev/null || true)"
@@ -1784,38 +1812,53 @@ warn_openclaw_not_found() {
 resolve_openclaw_bin() {
     refresh_shell_command_cache
     local resolved=""
-    resolved="$(type -P openclaw 2>/dev/null || true)"
-    if [[ -n "$resolved" && -x "$resolved" ]]; then
-        echo "$resolved"
-        return 0
-    fi
+    local cmd=""
+    while IFS= read -r cmd; do
+        resolved="$(type -P "$cmd" 2>/dev/null || true)"
+        if [[ -n "$resolved" && -x "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+    done < <(openclaw_candidate_bins)
 
     ensure_npm_global_bin_on_path
     refresh_shell_command_cache
-    resolved="$(type -P openclaw 2>/dev/null || true)"
-    if [[ -n "$resolved" && -x "$resolved" ]]; then
-        echo "$resolved"
-        return 0
-    fi
+    while IFS= read -r cmd; do
+        resolved="$(type -P "$cmd" 2>/dev/null || true)"
+        if [[ -n "$resolved" && -x "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+    done < <(openclaw_candidate_bins)
 
     local npm_bin=""
     npm_bin="$(npm_global_bin_dir || true)"
-    if [[ -n "$npm_bin" && -x "${npm_bin}/openclaw" ]]; then
-        echo "${npm_bin}/openclaw"
-        return 0
+    if [[ -n "$npm_bin" ]]; then
+        while IFS= read -r cmd; do
+            if [[ -x "${npm_bin}/${cmd}" ]]; then
+                echo "${npm_bin}/${cmd}"
+                return 0
+            fi
+        done < <(openclaw_candidate_bins)
     fi
 
     maybe_nodenv_rehash
     refresh_shell_command_cache
-    resolved="$(type -P openclaw 2>/dev/null || true)"
-    if [[ -n "$resolved" && -x "$resolved" ]]; then
-        echo "$resolved"
-        return 0
-    fi
+    while IFS= read -r cmd; do
+        resolved="$(type -P "$cmd" 2>/dev/null || true)"
+        if [[ -n "$resolved" && -x "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+    done < <(openclaw_candidate_bins)
 
-    if [[ -n "$npm_bin" && -x "${npm_bin}/openclaw" ]]; then
-        echo "${npm_bin}/openclaw"
-        return 0
+    if [[ -n "$npm_bin" ]]; then
+        while IFS= read -r cmd; do
+            if [[ -x "${npm_bin}/${cmd}" ]]; then
+                echo "${npm_bin}/${cmd}"
+                return 0
+            fi
+        done < <(openclaw_candidate_bins)
     fi
 
     echo ""
