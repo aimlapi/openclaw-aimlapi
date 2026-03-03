@@ -472,21 +472,28 @@ cleanup_legacy_submodules() {
 }
 
 cleanup_npm_openclaw_paths() {
+    # Safe cleanup, always returns 0 (do not fail installer on cleanup).
     local npm_root=""
     npm_root="$(npm root -g 2>/dev/null || true)"
     if [[ -z "$npm_root" || "$npm_root" != *node_modules* ]]; then
-        return 1
+        return 0
     fi
-    rm -rf "$npm_root"/.openclaw-* "$npm_root"/openclaw "$npm_root"/openclaw-aimlapi 2>/dev/null || true
+    rm -rf "$npm_root"/.openclaw-* 2>/dev/null || true
+    rm -rf "$npm_root"/openclaw 2>/dev/null || true
+    rm -rf "$npm_root"/openclaw-aimlapi 2>/dev/null || true
+    return 0
 }
+
 
 extract_openclaw_conflict_path() {
     local log="$1"
     local path=""
-    path="$(sed -n 's/.*File exists: //p' "$log" | head -n1)"
+
+    path="$(sed -n 's/.*File exists: //p' "$log" | head -n1 | tr -d '\r')"
     if [[ -z "$path" ]]; then
-        path="$(sed -n 's/.*EEXIST: file already exists, //p' "$log" | head -n1)"
+        path="$(sed -n 's/.*EEXIST: file already exists, //p' "$log" | head -n1 | tr -d '\r')"
     fi
+
     if [[ -n "$path" ]]; then
         echo "$path"
         return 0
@@ -499,17 +506,23 @@ cleanup_openclaw_bin_conflict() {
     if [[ -z "$bin_path" || ( ! -e "$bin_path" && ! -L "$bin_path" ) ]]; then
         return 1
     fi
+
     local npm_bin=""
     npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
-    if [[ -n "$npm_bin" && "$bin_path" != "$npm_bin/openclaw" ]]; then
+
+    # Only allow touching expected global bin locations
+    if [[ -n "$npm_bin" && "$bin_path" == "${npm_bin%/}/openclaw" ]]; then
+        :
+    else
         case "$bin_path" in
-            "/opt/homebrew/bin/openclaw"|"/usr/local/bin/openclaw")
+            "/opt/homebrew/bin/openclaw"|"/usr/local/bin/openclaw"|"/usr/bin/openclaw")
                 ;;
             *)
                 return 1
                 ;;
         esac
     fi
+
     if [[ -L "$bin_path" ]]; then
         local target=""
         target="$(readlink "$bin_path" 2>/dev/null || true)"
@@ -520,6 +533,7 @@ cleanup_openclaw_bin_conflict() {
         fi
         return 1
     fi
+
     local backup=""
     backup="${bin_path}.bak-$(date +%Y%m%d-%H%M%S)"
     if mv "$bin_path" "$backup"; then
@@ -641,29 +655,33 @@ run_npm_global_install() {
 
     local -a cmd
     cmd=(env "SHARP_IGNORE_GLOBAL_LIBVIPS=$SHARP_IGNORE_GLOBAL_LIBVIPS" npm --loglevel "$NPM_LOGLEVEL")
-    if [[ -n "$NPM_SILENT_FLAG" ]]; then
+    if [[ -n "${NPM_SILENT_FLAG:-}" ]]; then
         cmd+=("$NPM_SILENT_FLAG")
     fi
     cmd+=(--no-fund --no-audit install -g "$spec")
+
     local cmd_display=""
     printf -v cmd_display '%q ' "${cmd[@]}"
     LAST_NPM_INSTALL_CMD="${cmd_display% }"
 
-    if [[ "$VERBOSE" == "1" ]]; then
+    : > "$log" 2>/dev/null || true
+
+    if [[ "${VERBOSE:-0}" == "1" ]]; then
         "${cmd[@]}" 2>&1 | tee "$log"
-        return $?
+        return "${PIPESTATUS[0]}"
     fi
 
-    if [[ -n "$GUM" ]] && gum_is_tty; then
+    if [[ -n "${GUM:-}" ]] && gum_is_tty; then
         local cmd_quoted=""
         local log_quoted=""
         printf -v cmd_quoted '%q ' "${cmd[@]}"
         printf -v log_quoted '%q' "$log"
-        run_with_spinner "Installing OpenClaw + AI/ML API package" bash -c "${cmd_quoted}>${log_quoted} 2>&1"
+        run_with_spinner "Installing OpenClaw package" bash -c "${cmd_quoted}>${log_quoted} 2>&1"
         return $?
     fi
 
     "${cmd[@]}" >"$log" 2>&1
+    return $?
 }
 
 extract_npm_debug_log_path() {
@@ -747,22 +765,56 @@ print_npm_failure_diagnostics() {
 
 install_openclaw_npm() {
     local spec="$1"
-    local log
+    local log=""
     log="$(mktempfile)"
+
+    # Internal helper: detect corrupted entry inside node_modules
+    _openclaw_entry_is_corrupted() {
+        local npm_root=""
+        npm_root="$(npm root -g 2>/dev/null || true)"
+        [[ -z "$npm_root" ]] && return 1
+
+        local pkg_dir=""
+        if [[ -d "$npm_root/openclaw" ]]; then
+            pkg_dir="$npm_root/openclaw"
+        elif [[ -d "$npm_root/openclaw-aimlapi" ]]; then
+            pkg_dir="$npm_root/openclaw-aimlapi"
+        else
+            return 1
+        fi
+
+        local entry=""
+        if [[ -f "${pkg_dir}/dist/entry.js" ]]; then
+            entry="${pkg_dir}/dist/entry.js"
+        elif [[ -f "${pkg_dir}/openclaw.mjs" ]]; then
+            entry="${pkg_dir}/openclaw.mjs"
+        else
+            return 1
+        fi
+
+        local first_line=""
+        first_line="$(head -n 1 "$entry" 2>/dev/null || true)"
+        if [[ "$first_line" == "#!"* ]] || grep -qE '^[[:space:]]*exec[[:space:]]+node[[:space:]]+' "$entry" 2>/dev/null; then
+            return 0
+        fi
+        return 1
+    }
+
     if ! run_npm_global_install "$spec" "$log"; then
         local attempted_build_tool_fix=false
         if auto_install_build_tools_for_npm_failure "$log"; then
             attempted_build_tool_fix=true
             ui_info "Retrying npm install after build tools setup"
             if run_npm_global_install "$spec" "$log"; then
-                ui_success "OpenClaw + AI/ML API npm package installed"
+                ui_success "OpenClaw npm package installed"
+                ensure_openclaw_bin_link || true
                 return 0
             fi
         fi
 
         print_npm_failure_diagnostics "$spec" "$log"
 
-        if [[ "$VERBOSE" != "1" ]]; then
+        if [[ "${VERBOSE:-0}" != "1" ]]; then
             if [[ "$attempted_build_tool_fix" == "true" ]]; then
                 ui_warn "npm install still failed after build tools setup; showing last log lines"
             else
@@ -775,17 +827,20 @@ install_openclaw_npm() {
             ui_warn "npm left stale directory; cleaning and retrying"
             cleanup_npm_openclaw_paths
             if run_npm_global_install "$spec" "$log"; then
-                ui_success "OpenClaw + AI/ML API npm package installed"
+                ui_success "OpenClaw npm package installed"
+                ensure_openclaw_bin_link || true
                 return 0
             fi
             return 1
         fi
+
         if grep -q "EEXIST" "$log"; then
             local conflict=""
             conflict="$(extract_openclaw_conflict_path "$log" || true)"
             if [[ -n "$conflict" ]] && cleanup_openclaw_bin_conflict "$conflict"; then
                 if run_npm_global_install "$spec" "$log"; then
-                    ui_success "OpenClaw + AI/ML API npm package installed"
+                    ui_success "OpenClaw npm package installed"
+                    ensure_openclaw_bin_link || true
                     return 0
                 fi
                 return 1
@@ -796,9 +851,25 @@ install_openclaw_npm() {
             fi
             ui_info "Or rerun with: npm install -g --force ${spec}"
         fi
+
         return 1
     fi
-    ui_success "OpenClaw + AI/ML API npm package installed"
+
+    # Post-install: if package entry is corrupted, fix by clean reinstall.
+    if _openclaw_entry_is_corrupted; then
+        ui_warn "Detected corrupted OpenClaw entry file inside node_modules. Reinstalling cleanly."
+        npm uninstall -g openclaw 2>/dev/null || true
+        npm uninstall -g openclaw-aimlapi 2>/dev/null || true
+        cleanup_npm_openclaw_paths
+        if ! run_npm_global_install "$spec" "$log"; then
+            ui_error "Reinstall failed after corruption fix attempt"
+            tail -n 80 "$log" >&2 || true
+            return 1
+        fi
+    fi
+
+    ensure_openclaw_bin_link || true
+    ui_success "OpenClaw npm package installed"
     return 0
 }
 
@@ -1514,32 +1585,36 @@ fix_npm_permissions() {
 }
 
 ensure_openclaw_bin_link() {
-    local npm_prefix npm_bin
-    npm_prefix="$(npm prefix -g 2>/dev/null || true)"
-    [[ -z "$npm_prefix" ]] && return 1
+    # Creates runnable "openclaw" ONLY in global npm bin dir.
+    # Never writes into node_modules.
 
-    npm_bin="${npm_prefix}/bin"
+    local npm_bin=""
+    npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
+    [[ -z "$npm_bin" ]] && return 1
     mkdir -p "$npm_bin"
 
-    # Если npm уже поставил bin, не трогаем
-    if [[ -e "${npm_bin}/openclaw" ]]; then
-        chmod +x "${npm_bin}/openclaw" 2>/dev/null || true
+    local bin_path="${npm_bin%/}/openclaw"
+
+    # If bin already exists, keep it (but ensure executable)
+    if [[ -e "$bin_path" || -L "$bin_path" ]]; then
+        chmod +x "$bin_path" 2>/dev/null || true
         return 0
     fi
 
-    # Фоллбек: создаем wrapper в bin, но НЕ в node_modules
-    local npm_root pkg_dir entry
+    local npm_root=""
     npm_root="$(npm root -g 2>/dev/null || true)"
     [[ -z "$npm_root" ]] && return 1
 
-    if [[ -d "$npm_root/openclaw-aimlapi" ]]; then
-        pkg_dir="$npm_root/openclaw-aimlapi"
-    elif [[ -d "$npm_root/openclaw" ]]; then
+    local pkg_dir=""
+    if [[ -d "$npm_root/openclaw" ]]; then
         pkg_dir="$npm_root/openclaw"
+    elif [[ -d "$npm_root/openclaw-aimlapi" ]]; then
+        pkg_dir="$npm_root/openclaw-aimlapi"
     else
         return 1
     fi
 
+    local entry=""
     if [[ -f "${pkg_dir}/dist/entry.js" ]]; then
         entry="${pkg_dir}/dist/entry.js"
     elif [[ -f "${pkg_dir}/openclaw.mjs" ]]; then
@@ -1548,14 +1623,26 @@ ensure_openclaw_bin_link() {
         return 1
     fi
 
-    cat > "${npm_bin}/openclaw" <<EOF
+    # Guard: if entry looks like a shell wrapper, do NOT proceed.
+    # That indicates the package file was corrupted earlier.
+    local first_line=""
+    first_line="$(head -n 1 "$entry" 2>/dev/null || true)"
+    if [[ "$first_line" == "#!"* ]] || grep -qE '^[[:space:]]*exec[[:space:]]+node[[:space:]]+' "$entry" 2>/dev/null; then
+        ui_error "OpenClaw entry file looks corrupted: ${entry}"
+        ui_info "It seems a shell wrapper was written into node_modules earlier."
+        ui_info "Fix: reinstall the package (npm uninstall -g openclaw; npm install -g openclaw)"
+        return 1
+    fi
+
+    cat > "$bin_path" <<EOF
 #!/usr/bin/env bash
 exec node "${entry}" "\$@"
 EOF
-    chmod +x "${npm_bin}/openclaw"
-    ui_info "Created openclaw wrapper at ${npm_bin}/openclaw"
+    chmod +x "$bin_path"
+    ui_info "Created openclaw wrapper at ${bin_path}"
     return 0
 }
+
 
 # Check for existing OpenClaw installation
 check_existing_openclaw() {
@@ -1682,35 +1769,44 @@ run_pnpm() {
 
 ensure_user_local_bin_on_path() {
     local target="$HOME/.local/bin"
-    mkdir -p "$target"
+    mkdir -p "$target" 2>/dev/null || true
 
-    export PATH="$target:$PATH"
+    case ":$PATH:" in
+        *":$target:"*) ;;
+        *) export PATH="$target:$PATH" ;;
+    esac
 
     # shellcheck disable=SC2016
     local path_line='export PATH="$HOME/.local/bin:$PATH"'
+    local rc=""
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
         if [[ -f "$rc" ]] && ! grep -q ".local/bin" "$rc"; then
             echo "$path_line" >> "$rc"
         fi
     done
+    return 0
 }
 
 npm_global_bin_dir() {
+    # Prefer npm bin -g when available
+    local d=""
+    d="$(npm bin -g 2>/dev/null || true)"
+    if [[ -n "$d" && "$d" == /* ]]; then
+        echo "${d%/}"
+        return 0
+    fi
+
     local prefix=""
     prefix="$(npm prefix -g 2>/dev/null || true)"
-    if [[ -n "$prefix" ]]; then
-        if [[ "$prefix" == /* ]]; then
-            echo "${prefix%/}/bin"
-            return 0
-        fi
+    if [[ -n "$prefix" && "$prefix" == /* ]]; then
+        echo "${prefix%/}/bin"
+        return 0
     fi
 
     prefix="$(npm config get prefix 2>/dev/null || true)"
-    if [[ -n "$prefix" && "$prefix" != "undefined" && "$prefix" != "null" ]]; then
-        if [[ "$prefix" == /* ]]; then
-            echo "${prefix%/}/bin"
-            return 0
-        fi
+    if [[ -n "$prefix" && "$prefix" != "undefined" && "$prefix" != "null" && "$prefix" == /* ]]; then
+        echo "${prefix%/}/bin"
+        return 0
     fi
 
     echo ""
@@ -1751,11 +1847,35 @@ warn_shell_path_missing_dir() {
 }
 
 ensure_npm_global_bin_on_path() {
-    local bin_dir=""
-    bin_dir="$(npm_global_bin_dir || true)"
-    if [[ -n "$bin_dir" ]]; then
-        export PATH="${bin_dir}:$PATH"
-    fi
+    local npm_bin=""
+    npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
+    [[ -z "$npm_bin" ]] && return 1
+
+    # Внутри текущего install.sh
+    case ":$PATH:" in
+        *":${npm_bin}:"*) ;;
+        *) export PATH="${npm_bin}:$PATH" ;;
+    esac
+
+    # Персистентно в rc
+    local line='export PATH="$HOME/.npm-global/bin:$PATH"'
+    local rc=""
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        if [[ -f "$rc" ]] && ! grep -q '\.npm-global/bin' "$rc"; then
+            echo "$line" >> "$rc"
+        fi
+    done
+    return 0
+}
+
+print_path_fix_hint() {
+    local npm_bin=""
+    npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
+    [[ -z "$npm_bin" ]] && return 0
+    ui_warn "Installed, but openclaw is not discoverable on PATH in this shell"
+    ui_info "Run:"
+    echo "  export PATH=\"${npm_bin}:\$PATH\""
+    echo "  hash -r"
 }
 
 maybe_nodenv_rehash() {
@@ -1791,6 +1911,7 @@ warn_openclaw_not_found() {
 
 resolve_openclaw_bin() {
     refresh_shell_command_cache
+
     local resolved=""
     resolved="$(type -P openclaw 2>/dev/null || true)"
     if [[ -n "$resolved" && -x "$resolved" ]]; then
@@ -1798,22 +1919,16 @@ resolve_openclaw_bin() {
         return 0
     fi
 
+    # Ensure common bin dirs are on PATH
+    ensure_user_local_bin_on_path || true
     ensure_npm_global_bin_on_path
-    refresh_shell_command_cache
-    resolved="$(type -P openclaw 2>/dev/null || true)"
-    if [[ -n "$resolved" && -x "$resolved" ]]; then
-        echo "$resolved"
-        return 0
-    fi
 
     local npm_bin=""
-    npm_bin="$(npm_global_bin_dir || true)"
-    if [[ -n "$npm_bin" && -x "${npm_bin}/openclaw" ]]; then
-        echo "${npm_bin}/openclaw"
-        return 0
+    npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
+    if [[ -n "$npm_bin" ]]; then
+        export PATH="${npm_bin%/}:$PATH"
     fi
 
-    maybe_nodenv_rehash
     refresh_shell_command_cache
     resolved="$(type -P openclaw 2>/dev/null || true)"
     if [[ -n "$resolved" && -x "$resolved" ]]; then
@@ -1821,8 +1936,16 @@ resolve_openclaw_bin() {
         return 0
     fi
 
-    if [[ -n "$npm_bin" && -x "${npm_bin}/openclaw" ]]; then
-        echo "${npm_bin}/openclaw"
+    if [[ -n "$npm_bin" && -x "${npm_bin%/}/openclaw" ]]; then
+        echo "${npm_bin%/}/openclaw"
+        return 0
+    fi
+
+    maybe_nodenv_rehash || true
+    refresh_shell_command_cache
+    resolved="$(type -P openclaw 2>/dev/null || true)"
+    if [[ -n "$resolved" && -x "$resolved" ]]; then
+        echo "$resolved"
         return 0
     fi
 
@@ -2244,6 +2367,7 @@ main() {
         fi
     fi
 
+    print_path_fix_hint
     refresh_gateway_service_if_loaded
 
     # Step 6: Run doctor for migrations on upgrades and git installs
