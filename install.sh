@@ -1531,11 +1531,8 @@ fix_npm_permissions() {
 }
 
 openclaw_candidate_bins() {
-    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+    # CLI command must remain `openclaw` regardless of npm package name.
     echo "openclaw"
-    if [[ "$npm_package" != "openclaw" ]]; then
-        echo "$npm_package"
-    fi
 }
 
 ensure_openclaw_bin_link() {
@@ -1557,15 +1554,22 @@ ensure_openclaw_bin_link() {
         return 0
     fi
 
-    if [[ -x "${npm_bin}/${npm_package}" ]]; then
-        ln -sf "${npm_bin}/${npm_package}" "${npm_bin}/openclaw"
-        ui_info "Created openclaw compatibility link at ${npm_bin}/openclaw"
+    if [[ -f "$npm_root/$npm_package/openclaw.mjs" ]]; then
+        ln -sf "$npm_root/$npm_package/openclaw.mjs" "${npm_bin}/openclaw"
+        chmod +x "$npm_root/$npm_package/openclaw.mjs" >/dev/null 2>&1 || true
+        ui_info "Created openclaw bin link at ${npm_bin}/openclaw"
         return 0
     fi
 
     if [[ -f "$npm_root/$npm_package/dist/entry.js" ]]; then
-        ln -sf "$npm_root/$npm_package/dist/entry.js" "${npm_bin}/openclaw"
-        ui_info "Created openclaw bin link at ${npm_bin}/openclaw"
+        local wrapper="${npm_bin}/openclaw"
+        cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec node "$npm_root/$npm_package/dist/entry.js" "\$@"
+EOF
+        chmod +x "$wrapper"
+        ui_info "Created openclaw wrapper at ${npm_bin}/openclaw"
         return 0
     fi
 
@@ -1783,9 +1787,7 @@ maybe_nodenv_rehash() {
 }
 
 warn_openclaw_not_found() {
-    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
-    ui_warn "Installed, but OpenClaw CLI is not discoverable on PATH in this shell"
-    echo "  Tried commands: openclaw${npm_package:+, ${npm_package}}"
+    ui_warn "Installed, but openclaw is not discoverable on PATH in this shell"
     echo "  Try: hash -r (bash) or rehash (zsh), then retry."
     local t=""
     t="$(type -t openclaw 2>/dev/null || true)"
@@ -1988,14 +1990,17 @@ install_openclaw() {
 
     if [[ "${OPENCLAW_VERSION}" == "latest" ]]; then
         if ! resolve_openclaw_bin &> /dev/null; then
+            # npm install succeeded but CLI isn't discoverable yet; attempt explicit link before tag fallback.
+            ensure_openclaw_bin_link || true
+        fi
+        if ! resolve_openclaw_bin &> /dev/null; then
             local next_version=""
             next_version="$(resolve_next_version "$package_name" || true)"
             if [[ -n "$next_version" ]]; then
-                ui_warn "npm install ${package_name}@latest failed; retrying ${package_name}@next"
+                ui_warn "Installed ${package_name}@latest but openclaw is not yet discoverable; retrying ${package_name}@next"
                 cleanup_npm_openclaw_paths
                 install_openclaw_npm "${package_name}@next"
-            else
-                ui_warn "npm install ${package_name}@latest failed and dist-tag next is unavailable"
+                ensure_openclaw_bin_link || true
             fi
         fi
     fi
