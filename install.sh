@@ -2306,8 +2306,8 @@ main() {
 
     echo -e "${MUTED}AI/ML API provides 300+ AI models including Deepseek, Gemini, ChatGPT. The models run at enterprise-grade rate limits and uptimes${NC}"
     echo ""
-    echo -e "${MUTED}Get API key:${NC} https://aimlapi.com/app/?utm_source=openclaw-aimlapi&utm_medium=github&utm_campaign=integration"
-    echo -e "${MUTED}Provider docs:${NC} https://docs.aimlapi.com/?utm_source=openclaw-aimlapi&utm_medium=github&utm_campaign=integration"
+    echo -e "${MUTED}Get API key:${NC} https://aimlapi.com/app/keys/"
+    echo -e "${MUTED}Provider docs:${NC} https://docs.aimlapi.com/"
 
     if [[ "$is_upgrade" == "true" ]]; then
         local update_messages=(
