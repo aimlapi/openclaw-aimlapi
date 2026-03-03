@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # OpenClaw Installer for macOS and Linux
-# Usage: curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
+# Usage: curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash
 
 BOLD='\033[1m'
 ACCENT='\033[38;2;255;77;77m'       # coral-bright  #ff4d4d
@@ -16,6 +16,9 @@ MUTED='\033[38;2;90;100;128m'       # text-muted    #5a6480
 NC='\033[0m' # No Color
 
 DEFAULT_TAGLINE="All your chats, one OpenClaw."
+DEFAULT_NPM_PACKAGE="openclaw-aimlapi"
+DEFAULT_GIT_REPO_URL="https://github.com/aimlapi/openclaw-aimlapi.git"
+DEFAULT_GIT_REPO_BRANCH="feature/add-aimlapi-models-provider"
 
 ORIGINAL_PATH="${PATH:-}"
 
@@ -258,7 +261,7 @@ detect_os_or_die() {
     if [[ "$OS" == "unknown" ]]; then
         ui_error "Unsupported operating system"
         echo "This installer supports macOS and Linux (including WSL)."
-        echo "For Windows, use: iwr -useb https://openclaw.ai/install.ps1 | iex"
+        echo "For Windows, use: iwr -useb https://aimlapi.com/openclaw/install.ps1 | iex"
         exit 1
     fi
 
@@ -477,7 +480,8 @@ cleanup_npm_openclaw_paths() {
     if [[ -z "$npm_root" || "$npm_root" != *node_modules* ]]; then
         return 1
     fi
-    rm -rf "$npm_root"/.openclaw-* "$npm_root"/openclaw 2>/dev/null || true
+    local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+    rm -rf "$npm_root"/.openclaw-* "$npm_root"/openclaw "$npm_root"/"$npm_package" 2>/dev/null || true
 }
 
 extract_openclaw_conflict_path() {
@@ -951,7 +955,10 @@ DRY_RUN=${OPENCLAW_DRY_RUN:-0}
 INSTALL_METHOD=${OPENCLAW_INSTALL_METHOD:-}
 OPENCLAW_VERSION=${OPENCLAW_VERSION:-latest}
 USE_BETA=${OPENCLAW_BETA:-0}
-GIT_DIR_DEFAULT="${HOME}/openclaw"
+OPENCLAW_NPM_PACKAGE=${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}
+OPENCLAW_GIT_REPO_URL=${OPENCLAW_GIT_REPO_URL:-$DEFAULT_GIT_REPO_URL}
+OPENCLAW_GIT_REPO_BRANCH=${OPENCLAW_GIT_REPO_BRANCH:-$DEFAULT_GIT_REPO_BRANCH}
+GIT_DIR_DEFAULT="${HOME}/openclaw-aimlapi"
 GIT_DIR=${OPENCLAW_GIT_DIR:-$GIT_DIR_DEFAULT}
 GIT_UPDATE=${OPENCLAW_GIT_UPDATE:-1}
 SHARP_IGNORE_GLOBAL_LIBVIPS="${SHARP_IGNORE_GLOBAL_LIBVIPS:-1}"
@@ -967,7 +974,7 @@ print_usage() {
 OpenClaw installer (macOS + Linux)
 
 Usage:
-  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- [options]
+  curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash -s -- [options]
 
 Options:
   --install-method, --method npm|git   Install via npm (default) or from a git checkout
@@ -987,6 +994,9 @@ Environment variables:
   OPENCLAW_INSTALL_METHOD=git|npm
   OPENCLAW_VERSION=latest|next|<semver>
   OPENCLAW_BETA=0|1
+  OPENCLAW_NPM_PACKAGE=openclaw-aimlapi
+  OPENCLAW_GIT_REPO_URL=https://github.com/aimlapi/openclaw-aimlapi.git
+  OPENCLAW_GIT_REPO_BRANCH=feature/add-aimlapi-models-provider
   OPENCLAW_GIT_DIR=...
   OPENCLAW_GIT_UPDATE=0|1
   OPENCLAW_NO_PROMPT=1
@@ -997,9 +1007,9 @@ Environment variables:
   SHARP_IGNORE_GLOBAL_LIBVIPS=0|1    Default: 1 (avoid sharp building against global libvips)
 
 Examples:
-  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash
-  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard
-  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --install-method git --no-onboard
+  curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash
+  curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash -s -- --no-onboard
+  curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash -s -- --install-method git --no-onboard
 EOF
 }
 
@@ -1159,7 +1169,7 @@ detect_openclaw_checkout() {
     if [[ ! -f "$dir/pnpm-workspace.yaml" ]]; then
         return 1
     fi
-    if ! grep -q '"name"[[:space:]]*:[[:space:]]*"openclaw"' "$dir/package.json" 2>/dev/null; then
+    if ! grep -Eq '"name"[[:space:]]*:[[:space:]]*"(openclaw|openclaw-aimlapi)"' "$dir/package.json" 2>/dev/null; then
         return 1
     fi
     echo "$dir"
@@ -1187,7 +1197,7 @@ print_homebrew_admin_fix() {
     echo "  2) Ask an Administrator to grant admin rights, then sign out/in:"
     echo "     sudo dseditgroup -o edit -a ${current_user} -t user admin"
     echo "Then retry:"
-    echo "  curl -fsSL https://openclaw.ai/install.sh | bash"
+    echo "  curl -fsSL https://aimlapi.com/openclaw/install.sh | bash"
 }
 
 install_homebrew() {
@@ -1814,7 +1824,7 @@ resolve_openclaw_bin() {
 
 install_openclaw_from_git() {
     local repo_dir="$1"
-    local repo_url="https://github.com/openclaw/openclaw.git"
+    local repo_url="${OPENCLAW_GIT_REPO_URL:-$DEFAULT_GIT_REPO_URL}"
 
     if [[ -d "$repo_dir/.git" ]]; then
         ui_info "Installing OpenClaw from git checkout: ${repo_dir}"
@@ -1831,6 +1841,18 @@ install_openclaw_from_git() {
 
     if [[ ! -d "$repo_dir" ]]; then
         run_quiet_step "Cloning OpenClaw" git clone "$repo_url" "$repo_dir"
+    fi
+
+    local repo_branch="${OPENCLAW_GIT_REPO_BRANCH:-$DEFAULT_GIT_REPO_BRANCH}"
+    if [[ -n "$repo_branch" ]] && [[ -z "$(git -C "$repo_dir" status --porcelain 2>/dev/null || true)" ]]; then
+        run_quiet_step "Fetching repository" git -C "$repo_dir" fetch --all --prune || true
+        if git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$repo_branch"; then
+            run_quiet_step "Checking out branch" git -C "$repo_dir" checkout "$repo_branch" || true
+        elif git -C "$repo_dir" show-ref --verify --quiet "refs/remotes/origin/$repo_branch"; then
+            run_quiet_step "Checking out branch" git -C "$repo_dir" checkout -b "$repo_branch" "origin/$repo_branch" || true
+        else
+            ui_warn "Branch not found on origin: $repo_branch; continuing on current branch"
+        fi
     fi
 
     if [[ "$GIT_UPDATE" == "1" ]]; then
@@ -1865,7 +1887,7 @@ EOF
 # Install OpenClaw
 resolve_beta_version() {
     local beta=""
-    beta="$(npm view openclaw dist-tags.beta 2>/dev/null || true)"
+    beta="$(npm view "${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}" dist-tags.beta 2>/dev/null || true)"
     if [[ -z "$beta" || "$beta" == "undefined" || "$beta" == "null" ]]; then
         return 1
     fi
@@ -1873,14 +1895,14 @@ resolve_beta_version() {
 }
 
 install_openclaw() {
-    local package_name="openclaw"
+    local package_name="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
     if [[ "$USE_BETA" == "1" ]]; then
         local beta_version=""
         beta_version="$(resolve_beta_version || true)"
         if [[ -n "$beta_version" ]]; then
             OPENCLAW_VERSION="$beta_version"
             ui_info "Beta tag detected (${beta_version})"
-            package_name="openclaw"
+            package_name="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
         else
             OPENCLAW_VERSION="latest"
             ui_info "No beta tag found; using latest"
@@ -1911,11 +1933,11 @@ install_openclaw() {
         install_openclaw_npm "${install_spec}"
     fi
 
-    if [[ "${OPENCLAW_VERSION}" == "latest" && "${package_name}" == "openclaw" ]]; then
+    if [[ "${OPENCLAW_VERSION}" == "latest" ]]; then
         if ! resolve_openclaw_bin &> /dev/null; then
-            ui_warn "npm install openclaw@latest failed; retrying openclaw@next"
+            ui_warn "npm install ${package_name}@latest failed; retrying ${package_name}@next"
             cleanup_npm_openclaw_paths
-            install_openclaw_npm "openclaw@next"
+            install_openclaw_npm "${package_name}@next"
         fi
     fi
 
@@ -2015,8 +2037,9 @@ resolve_openclaw_version() {
     if [[ -z "$version" ]]; then
         local npm_root=""
         npm_root=$(npm root -g 2>/dev/null || true)
-        if [[ -n "$npm_root" && -f "$npm_root/openclaw/package.json" ]]; then
-            version=$(node -e "console.log(require('${npm_root}/openclaw/package.json').version)" 2>/dev/null || true)
+        local npm_package="${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}"
+        if [[ -n "$npm_root" && -f "$npm_root/${npm_package}/package.json" ]]; then
+            version=$(node -e "console.log(require('${npm_root}/${npm_package}/package.json').version)" 2>/dev/null || true)
         fi
     fi
     echo "$version"
@@ -2153,9 +2176,9 @@ main() {
     local final_git_dir=""
     if [[ "$INSTALL_METHOD" == "git" ]]; then
         # Clean up npm global install if switching to git
-        if npm list -g openclaw &>/dev/null; then
+        if npm list -g "${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}" &>/dev/null; then
             ui_info "Removing npm global install (switching to git)"
-            npm uninstall -g openclaw 2>/dev/null || true
+            npm uninstall -g "${OPENCLAW_NPM_PACKAGE:-$DEFAULT_NPM_PACKAGE}" 2>/dev/null || true
             ui_success "npm global install removed"
         fi
 
@@ -2275,7 +2298,7 @@ main() {
         ui_kv "Checkout" "$final_git_dir"
         ui_kv "Wrapper" "$HOME/.local/bin/openclaw"
         ui_kv "Update command" "openclaw update --restart"
-        ui_kv "Switch to npm" "curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --install-method npm"
+        ui_kv "Switch to npm" "curl -fsSL --proto '=https' --tlsv1.2 https://aimlapi.com/openclaw/install.sh | bash -s -- --install-method npm"
     elif [[ "$is_upgrade" == "true" ]]; then
         ui_info "Upgrade complete"
         if [[ -r /dev/tty && -w /dev/tty ]]; then
