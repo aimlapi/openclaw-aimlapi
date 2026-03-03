@@ -1371,83 +1371,34 @@ check_npm() {
     command -v npm >/dev/null 2>&1
 }
 
-install_npm_linux() {
-    require_sudo
-
-    if command -v apt-get &> /dev/null; then
-        if is_root; then
-            run_quiet_step "Updating package index" apt-get update -qq
-            run_quiet_step "Installing npm" apt-get install -y -qq npm
-        else
-            run_quiet_step "Updating package index" sudo apt-get update -qq
-            run_quiet_step "Installing npm" sudo apt-get install -y -qq npm
-        fi
-        return 0
-    fi
-
-    if command -v dnf &> /dev/null; then
-        if is_root; then
-            run_quiet_step "Installing npm" dnf install -y -q npm
-        else
-            run_quiet_step "Installing npm" sudo dnf install -y -q npm
-        fi
-        return 0
-    fi
-
-    if command -v yum &> /dev/null; then
-        if is_root; then
-            run_quiet_step "Installing npm" yum install -y -q npm
-        else
-            run_quiet_step "Installing npm" sudo yum install -y -q npm
-        fi
-        return 0
-    fi
-
-    if command -v apk &> /dev/null; then
-        if is_root; then
-            run_quiet_step "Installing npm" apk add --no-cache npm
-        else
-            run_quiet_step "Installing npm" sudo apk add --no-cache npm
-        fi
-        return 0
-    fi
-
-    return 1
-}
-
 ensure_npm() {
     if check_npm; then
         ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
         return 0
     fi
 
-    ui_warn "npm is missing; attempting to install it"
+    ui_warn "npm is missing; attempting to recover"
 
-    if [[ "$OS" == "macos" ]]; then
-        # On Mac, npm should have come with Homebrew node@22. If it's missing, it's likely a PATH issue rather than a failed install, so print active paths for debugging.
-        print_active_node_paths || true
-        ui_error "npm is missing on macOS after Node install"
-        echo "Try restarting your shell, or ensure Homebrew node@22 is first on PATH."
-        return 1
+    # Usually PATH / hash cache issue after installing node
+    refresh_shell_command_cache
+    if check_npm; then
+        ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
+        return 0
     fi
 
-    if [[ "$OS" == "linux" ]]; then
-        if install_npm_linux; then
-            refresh_shell_command_cache
-            if check_npm; then
-                ui_success "npm installed ($(npm -v 2>/dev/null || echo unknown))"
-                return 0
-            fi
+    # Try common locations (NodeSource puts node/npm into /usr/bin)
+    if [[ -x /usr/bin/npm ]]; then
+        export PATH="/usr/bin:$PATH"
+        refresh_shell_command_cache
+        if check_npm; then
+            ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
+            return 0
         fi
-        ui_error "Failed to install npm automatically"
-        echo "Install manually, then retry:"
-        echo "  Ubuntu/Debian: sudo apt-get install -y npm"
-        echo "  Fedora: sudo dnf install -y npm"
-        echo "  Alpine: sudo apk add --no-cache npm"
-        return 1
     fi
 
-    ui_error "Unsupported OS for npm installation"
+    ui_error "npm is missing after Node install"
+    print_active_node_paths || true
+    echo "Try reopening the terminal and re-run the installer."
     return 1
 }
 
@@ -1563,32 +1514,46 @@ fix_npm_permissions() {
 }
 
 ensure_openclaw_bin_link() {
-    local npm_root=""
-    npm_root="$(npm root -g 2>/dev/null || true)"
-    if [[ -z "$npm_root" ]]; then
-        return 1
+    local npm_prefix npm_bin
+    npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+    [[ -z "$npm_prefix" ]] && return 1
+
+    npm_bin="${npm_prefix}/bin"
+    mkdir -p "$npm_bin"
+
+    # Если npm уже поставил bin, не трогаем
+    if [[ -e "${npm_bin}/openclaw" ]]; then
+        chmod +x "${npm_bin}/openclaw" 2>/dev/null || true
+        return 0
     fi
 
-    local pkg_dir=""
-    if [[ -d "$npm_root/openclaw" ]]; then
-        pkg_dir="$npm_root/openclaw"
-    elif [[ -d "$npm_root/openclaw-aimlapi" ]]; then
+    # Фоллбек: создаем wrapper в bin, но НЕ в node_modules
+    local npm_root pkg_dir entry
+    npm_root="$(npm root -g 2>/dev/null || true)"
+    [[ -z "$npm_root" ]] && return 1
+
+    if [[ -d "$npm_root/openclaw-aimlapi" ]]; then
         pkg_dir="$npm_root/openclaw-aimlapi"
+    elif [[ -d "$npm_root/openclaw" ]]; then
+        pkg_dir="$npm_root/openclaw"
     else
         return 1
     fi
 
-    local npm_bin=""
-    npm_bin="$(npm_global_bin_dir || true)"
-    if [[ -z "$npm_bin" ]]; then
+    if [[ -f "${pkg_dir}/dist/entry.js" ]]; then
+        entry="${pkg_dir}/dist/entry.js"
+    elif [[ -f "${pkg_dir}/openclaw.mjs" ]]; then
+        entry="${pkg_dir}/openclaw.mjs"
+    else
         return 1
     fi
-    mkdir -p "$npm_bin"
 
-    if [[ ! -e "${npm_bin}/openclaw" && ! -L "${npm_bin}/openclaw" ]]; then
-        ln -sf "${pkg_dir}/dist/entry.js" "${npm_bin}/openclaw"
-        ui_info "Created openclaw bin link at ${npm_bin}/openclaw"
-    fi
+    cat > "${npm_bin}/openclaw" <<EOF
+#!/usr/bin/env bash
+exec node "${entry}" "\$@"
+EOF
+    chmod +x "${npm_bin}/openclaw"
+    ui_info "Created openclaw wrapper at ${npm_bin}/openclaw"
     return 0
 }
 
