@@ -11,6 +11,7 @@ import { refreshQwenPortalCredentials } from "../../providers/qwen-portal-oauth.
 import { resolveSecretRefString, type SecretRefResolveCache } from "../../secrets/resolve.js";
 import { refreshChutesTokens } from "../chutes-oauth.js";
 import { AUTH_STORE_LOCK_OPTIONS, log } from "./constants.js";
+import { resolveTokenExpiryState } from "./credential-state.js";
 import { formatAuthDoctorHint } from "./doctor.js";
 import { ensureAuthStoreFile, resolveAuthStorePath } from "./paths.js";
 import { suggestOAuthProfileIdForLegacyDefault } from "./repair.js";
@@ -85,12 +86,6 @@ function buildOAuthProfileResult(params: {
     provider: params.provider,
     email: params.email,
   });
-}
-
-function isExpiredCredential(expires: number | undefined): boolean {
-  return (
-    typeof expires === "number" && Number.isFinite(expires) && expires > 0 && Date.now() >= expires
-  );
 }
 
 type ResolveApiKeyForProfileParams = {
@@ -333,6 +328,10 @@ export async function resolveApiKeyForProfile(
     return buildApiKeyProfileResult({ apiKey: key, provider: cred.provider, email: cred.email });
   }
   if (cred.type === "token") {
+    const expiryState = resolveTokenExpiryState(cred.expires);
+    if (expiryState === "expired" || expiryState === "invalid_expires") {
+      return null;
+    }
     const token = await resolveProfileSecretString({
       profileId,
       provider: cred.provider,
@@ -345,9 +344,6 @@ export async function resolveApiKeyForProfile(
       refFailureMessage: "failed to resolve auth profile token ref",
     });
     if (!token) {
-      return null;
-    }
-    if (isExpiredCredential(cred.expires)) {
       return null;
     }
     return buildApiKeyProfileResult({ apiKey: token, provider: cred.provider, email: cred.email });
