@@ -398,7 +398,7 @@ is_shell_function() {
 is_gum_raw_mode_failure() {
     local err_log="$1"
     [[ -s "$err_log" ]] || return 1
-    grep -Eiq 'setrawmode' "$err_log"
+    grep -Eiq 'setrawmode|inappropriate ioctl for device' "$err_log"
 }
 
 run_with_spinner() {
@@ -1450,16 +1450,61 @@ ensure_npm() {
 
     ui_warn "npm is missing; attempting to recover"
 
-    # Usually PATH / hash cache issue after installing node
     refresh_shell_command_cache
     if check_npm; then
         ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
         return 0
     fi
 
-    # Try common locations (NodeSource puts node/npm into /usr/bin)
+    # If npm binary exists but PATH/cache is stale
     if [[ -x /usr/bin/npm ]]; then
         export PATH="/usr/bin:$PATH"
+        refresh_shell_command_cache
+        if check_npm; then
+            ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
+            return 0
+        fi
+    fi
+
+    # Real recovery: install npm package on Linux
+    if [[ "$OS" == "linux" ]]; then
+        require_sudo
+
+        if command -v apt-get >/dev/null 2>&1; then
+            ui_info "Installing npm via apt-get"
+            if is_root; then
+                run_quiet_step "Updating package index" apt-get update -qq
+                run_quiet_step "Installing npm" apt-get install -y -qq npm
+            else
+                run_quiet_step "Updating package index" sudo apt-get update -qq
+                run_quiet_step "Installing npm" sudo apt-get install -y -qq npm
+            fi
+        elif command -v dnf >/dev/null 2>&1; then
+            ui_info "Installing npm via dnf"
+            if is_root; then
+                run_quiet_step "Installing npm" dnf install -y -q npm
+            else
+                run_quiet_step "Installing npm" sudo dnf install -y -q npm
+            fi
+        elif command -v yum >/dev/null 2>&1; then
+            ui_info "Installing npm via yum"
+            if is_root; then
+                run_quiet_step "Installing npm" yum install -y -q npm
+            else
+                run_quiet_step "Installing npm" sudo yum install -y -q npm
+            fi
+        elif command -v apk >/dev/null 2>&1; then
+            ui_info "Installing npm via apk"
+            if is_root; then
+                run_quiet_step "Installing npm" apk add --no-cache npm
+            else
+                run_quiet_step "Installing npm" sudo apk add --no-cache npm
+            fi
+        else
+            ui_error "No supported package manager to install npm"
+            return 1
+        fi
+
         refresh_shell_command_cache
         if check_npm; then
             ui_success "npm found ($(npm -v 2>/dev/null || echo unknown))"
@@ -1851,14 +1896,12 @@ ensure_npm_global_bin_on_path() {
     npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
     [[ -z "$npm_bin" ]] && return 1
 
-    # Внутри текущего install.sh
     case ":$PATH:" in
         *":${npm_bin}:"*) ;;
         *) export PATH="${npm_bin}:$PATH" ;;
     esac
 
-    # Персистентно в rc
-    local line='export PATH="$HOME/.npm-global/bin:$PATH"'
+    local line="export PATH=\"${npm_bin}:\$PATH\""
     local rc=""
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
         if [[ -f "$rc" ]] && ! grep -q '\.npm-global/bin' "$rc"; then
@@ -1882,6 +1925,60 @@ maybe_nodenv_rehash() {
     if command -v nodenv &> /dev/null; then
         nodenv rehash >/dev/null 2>&1 || true
     fi
+}
+
+fix_missing_workspace_templates() {
+    # Fix: OpenClaw runtime may look for templates at ~/docs/reference/templates
+    # but in npm installs they live inside node_modules.
+    # We copy (or symlink) them into the expected location.
+
+    if ! command -v npm >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local npm_root=""
+    npm_root="$(npm root -g 2>/dev/null || true)"
+    [[ -z "$npm_root" ]] && return 0
+
+    local pkg_dir=""
+    if [[ -d "$npm_root/openclaw-aimlapi" ]]; then
+        pkg_dir="$npm_root/openclaw-aimlapi"
+    elif [[ -d "$npm_root/openclaw" ]]; then
+        pkg_dir="$npm_root/openclaw"
+    else
+        return 0
+    fi
+
+    local src="${pkg_dir}/docs/reference/templates"
+    local dst="${HOME}/docs/reference/templates"
+
+    # If package doesn't have templates, nothing we can do here.
+    if [[ ! -d "$src" ]]; then
+        return 0
+    fi
+
+    # If already OK, skip.
+    if [[ -f "${dst}/AGENTS.md" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$dst" 2>/dev/null || true
+
+    # Prefer copy to avoid broken symlinks after npm updates
+    if cp -a "${src}/." "$dst/" 2>/dev/null; then
+        ui_success "Workspace templates installed to ${dst}"
+        return 0
+    fi
+
+    # Fallback to symlink if copy fails
+    mkdir -p "${HOME}/docs/reference" 2>/dev/null || true
+    if ln -sfn "$src" "$dst" 2>/dev/null; then
+        ui_success "Workspace templates linked to ${dst}"
+        return 0
+    fi
+
+    ui_warn "Could not install workspace templates; OpenClaw may error on first run"
+    return 0
 }
 
 warn_openclaw_not_found() {
@@ -1910,40 +2007,99 @@ warn_openclaw_not_found() {
 }
 
 resolve_openclaw_bin() {
-    refresh_shell_command_cache
+    # Reset command cache early
+    refresh_shell_command_cache 2>/dev/null || true
+    hash -r 2>/dev/null || true
 
     local resolved=""
-    resolved="$(type -P openclaw 2>/dev/null || true)"
+
+    # 1) Fast path: already on PATH
+    resolved="$(command -v openclaw 2>/dev/null || true)"
     if [[ -n "$resolved" && -x "$resolved" ]]; then
         echo "$resolved"
         return 0
     fi
 
-    # Ensure common bin dirs are on PATH
-    ensure_user_local_bin_on_path || true
-    ensure_npm_global_bin_on_path
+    # 2) Make sure common user bins are in PATH
+    ensure_user_local_bin_on_path 2>/dev/null || true
 
+    # 3) Collect candidate npm global bin dirs
+    # We intentionally try multiple strategies because npm behaves differently
+    # depending on prefix, root, distro packaging, and how installer is executed.
+    local candidates=()
+
+    # a) existing helper, if correct
     local npm_bin=""
     npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
     if [[ -n "$npm_bin" ]]; then
-        export PATH="${npm_bin%/}:$PATH"
+        candidates+=("${npm_bin%/}")
     fi
 
-    refresh_shell_command_cache
-    resolved="$(type -P openclaw 2>/dev/null || true)"
+    # b) npm bin -g (works for classic npm)
+    local npm_bin_g=""
+    npm_bin_g="$(npm bin -g 2>/dev/null || true)"
+    if [[ -n "$npm_bin_g" ]]; then
+        candidates+=("${npm_bin_g%/}")
+    fi
+
+    # c) npm prefix/bin (covers custom prefix like ~/.npm-global)
+    local npm_prefix=""
+    npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [[ -n "$npm_prefix" && "$npm_prefix" != "undefined" && "$npm_prefix" != "null" ]]; then
+        if [[ -d "${npm_prefix%/}/bin" ]]; then
+            candidates+=("${npm_prefix%/}/bin")
+        fi
+    fi
+
+    # d) common fallbacks
+    if [[ -d "$HOME/.npm-global/bin" ]]; then
+        candidates+=("$HOME/.npm-global/bin")
+    fi
+    if [[ -d "$HOME/.local/bin" ]]; then
+        candidates+=("$HOME/.local/bin")
+    fi
+
+    # 4) Deduplicate and add to PATH
+    local seen="|"
+    local d=""
+    for d in "${candidates[@]:-}"; do
+        [[ -z "$d" ]] && continue
+        [[ ! -d "$d" ]] && continue
+        case "$seen" in
+            *"|$d|"*) continue ;;
+        esac
+        seen="${seen}${d}|"
+        export PATH="$d:$PATH"
+    done
+
+    # Also run existing helper that may append extra dirs
+    ensure_npm_global_bin_on_path 2>/dev/null || true
+
+    # 5) Re-check after PATH update
+    refresh_shell_command_cache 2>/dev/null || true
+    hash -r 2>/dev/null || true
+
+    resolved="$(command -v openclaw 2>/dev/null || true)"
     if [[ -n "$resolved" && -x "$resolved" ]]; then
         echo "$resolved"
         return 0
     fi
 
-    if [[ -n "$npm_bin" && -x "${npm_bin%/}/openclaw" ]]; then
-        echo "${npm_bin%/}/openclaw"
-        return 0
-    fi
+    # 6) Check direct paths in candidates (bypasses PATH lookup)
+    for d in "${candidates[@]:-}"; do
+        d="${d%/}"
+        if [[ -n "$d" && -x "$d/openclaw" ]]; then
+            echo "$d/openclaw"
+            return 0
+        fi
+    done
 
-    maybe_nodenv_rehash || true
-    refresh_shell_command_cache
-    resolved="$(type -P openclaw 2>/dev/null || true)"
+    # 7) nodenv/nvm etc.
+    maybe_nodenv_rehash 2>/dev/null || true
+    refresh_shell_command_cache 2>/dev/null || true
+    hash -r 2>/dev/null || true
+
+    resolved="$(command -v openclaw 2>/dev/null || true)"
     if [[ -n "$resolved" && -x "$resolved" ]]; then
         echo "$resolved"
         return 0
@@ -2099,7 +2255,7 @@ run_doctor() {
         warn_openclaw_not_found
         return 0
     fi
-    run_quiet_step "Running doctor" "$claw" doctor --non-interactive || true
+    run_quiet_step "Running doctor" run_openclaw "$claw" doctor --non-interactive || true
     ui_success "Doctor complete"
 }
 
@@ -2114,7 +2270,22 @@ maybe_open_dashboard() {
     if ! "$claw" dashboard --help >/dev/null 2>&1; then
         return 0
     fi
-    "$claw" dashboard || true
+    run_openclaw "$claw" dashboard || true
+}
+
+OPENCLAW_RUN_CWD="${OPENCLAW_RUN_CWD:-$HOME}"
+
+run_openclaw() {
+    local claw="$1"
+    shift || true
+    ( cd "$OPENCLAW_RUN_CWD" && "$claw" "$@" )
+}
+
+
+run_openclaw_tty() {
+    local claw="$1"
+    shift || true
+    ( cd "$OPENCLAW_RUN_CWD" && exec </dev/tty && "$claw" "$@" )
 }
 
 resolve_workspace_dir() {
@@ -2160,7 +2331,7 @@ run_bootstrap_onboarding_if_needed() {
         return
     fi
 
-    "$claw" onboard || {
+    run_openclaw_tty "$claw" onboard || {
         ui_error "Onboarding failed; run openclaw onboard to retry"
         return
     }
@@ -2226,21 +2397,21 @@ refresh_gateway_service_if_loaded() {
     fi
 
     ui_info "Refreshing loaded gateway service"
-    if run_quiet_step "Refreshing gateway service" "$claw" gateway install --force; then
+    if run_quiet_step "Refreshing gateway service" run_openclaw "$claw" gateway install --force; then
         ui_success "Gateway service metadata refreshed"
     else
         ui_warn "Gateway service refresh failed; continuing"
         return 0
     fi
 
-    if run_quiet_step "Restarting gateway service" "$claw" gateway restart; then
+    if run_quiet_step "Restarting gateway service" run_openclaw "$claw"  gateway restart; then
         ui_success "Gateway service restarted"
     else
         ui_warn "Gateway service restart failed; continuing"
         return 0
     fi
 
-    run_quiet_step "Probing gateway service" "$claw" gateway status --probe --deep || true
+    run_quiet_step "Probing gateway service" run_openclaw "$claw"  gateway status --probe --deep || true
 }
 
 # Main installation flow
@@ -2254,6 +2425,10 @@ main() {
     print_installer_banner
     print_gum_status
     detect_os_or_die
+
+    # FIX: prevent workspace template resolution from depending on the directory
+    # where the installer was executed (Desktop, /tmp, etc)
+    cd "$HOME" || true
 
     local detected_checkout=""
     detected_checkout="$(detect_openclaw_checkout "$PWD" || true)"
@@ -2351,6 +2526,7 @@ main() {
         install_openclaw
     fi
 
+    fix_missing_workspace_templates || true
     ui_stage "Finalizing setup"
 
     OPENCLAW_BIN="$(resolve_openclaw_bin || true)"
@@ -2525,7 +2701,7 @@ main() {
                 ui_info "Gateway daemon detected; would restart (openclaw daemon restart)"
             else
                 ui_info "Gateway daemon detected; restarting"
-                if OPENCLAW_UPDATE_IN_PROGRESS=1 "$claw" daemon restart >/dev/null 2>&1; then
+                if OPENCLAW_UPDATE_IN_PROGRESS=1 run_openclaw "$claw" daemon restart >/dev/null 2>&1; then
                     ui_success "Gateway restarted"
                 else
                     ui_warn "Gateway restart failed; try: openclaw daemon restart"
