@@ -40,6 +40,14 @@ import {
   HUGGINGFACE_MODEL_CATALOG,
   buildHuggingfaceModelDefinition,
 } from "./huggingface-models.js";
+import {
+  AIMLAPI_BASE_URL,
+  AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+  AIMLAPI_DEFAULT_COST,
+  AIMLAPI_DEFAULT_MAX_TOKENS,
+  AIMLAPI_DEFAULT_MODEL_ID,
+  discoverAimlapiModels,
+} from "./aimlapi-models.js";
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
 import { OLLAMA_NATIVE_BASE_URL } from "./ollama-stream.js";
 import {
@@ -56,6 +64,8 @@ import { discoverVeniceModels, VENICE_BASE_URL } from "./venice-models.js";
 
 type ModelsConfig = NonNullable<OpenClawConfig["models"]>;
 export type ProviderConfig = NonNullable<ModelsConfig["providers"]>[string];
+
+export { AIMLAPI_BASE_URL, AIMLAPI_DEFAULT_MODEL_ID };
 
 const MINIMAX_PORTAL_BASE_URL = "https://api.minimax.io/anthropic";
 const MINIMAX_DEFAULT_MODEL_ID = "MiniMax-M2.5";
@@ -176,16 +186,6 @@ const VLLM_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
-export const AIMLAPI_BASE_URL = "https://api.aimlapi.com/v1";
-export const AIMLAPI_DEFAULT_MODEL_ID = "openai/gpt-5-nano-2025-08-07";
-const AIMLAPI_DEFAULT_CONTEXT_WINDOW = 128000;
-const AIMLAPI_DEFAULT_MAX_TOKENS = 16384;
-const AIMLAPI_DEFAULT_COST = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-};
 
 export const QIANFAN_BASE_URL = "https://qianfan.baidubce.com/v2";
 export const QIANFAN_DEFAULT_MODEL_ID = "deepseek-v3.2";
@@ -395,82 +395,6 @@ async function discoverVllmModels(
   }
 }
 
-interface AimlapiModel {
-  id: string;
-  type: string;
-  info?: {
-    name?: string;
-    developer?: string;
-    description?: string;
-    contextLength?: number;
-    maxTokens?: number;
-  };
-  features?: string[];
-}
-
-interface AimlapiModelsResponse {
-  object: string;
-  data: AimlapiModel[];
-}
-
-async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> {
-  // Skip AIMLAPI discovery in test environments
-  if (process.env.VITEST || process.env.NODE_ENV === "test") {
-    return [];
-  }
-  try {
-    const response = await fetch(`${AIMLAPI_BASE_URL}/models`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) {
-      console.warn(`Failed to discover AIMLAPI models: ${response.status}`);
-      return [];
-    }
-    const data = (await response.json()) as AimlapiModelsResponse;
-    if (!data.data || data.data.length === 0) {
-      console.warn("No AIMLAPI models found");
-      return [];
-    }
-
-    // Filter for chat-completion models only
-    return data.data
-      .filter((model) => model.type === "chat-completion")
-      .map((model) => {
-        const modelId = model.id;
-        const isReasoning =
-          model.features?.includes("openai/chat-completion.reasoning") ||
-          modelId.toLowerCase().includes("o1") ||
-          modelId.toLowerCase().includes("o3") ||
-          modelId.toLowerCase().includes("reasoning");
-        const hasVision =
-          model.features?.includes("openai/chat-completion.vision") ||
-          modelId.toLowerCase().includes("vision");
-
-        const input: ("text" | "image")[] = ["text"];
-        if (hasVision) {
-          input.push("image");
-        }
-        // Note: audio is not supported in ModelDefinitionConfig input type
-
-        // Cap maxTokens to reasonable limits to avoid Pi SDK validation errors
-        const rawMaxTokens = model.info?.maxTokens ?? AIMLAPI_DEFAULT_MAX_TOKENS;
-        const maxTokens = Math.max(1, Math.min(rawMaxTokens, 32768)); // Ensure at least 1, cap at 32k
-
-        return {
-          id: modelId,
-          name: model.info?.name || modelId,
-          reasoning: isReasoning,
-          input,
-          cost: AIMLAPI_DEFAULT_COST,
-          contextWindow: model.info?.contextLength ?? AIMLAPI_DEFAULT_CONTEXT_WINDOW,
-          maxTokens,
-        };
-      });
-  } catch (error) {
-    console.warn(`Failed to discover AIMLAPI models: ${String(error)}`);
-    return [];
-  }
-}
 
 function normalizeApiKeyConfig(value: string): string {
   const trimmed = value.trim();
