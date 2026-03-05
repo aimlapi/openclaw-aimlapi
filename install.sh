@@ -808,6 +808,8 @@ install_openclaw_npm() {
             if run_npm_global_install "$spec" "$log"; then
                 ui_success "OpenClaw npm package installed"
                 ensure_openclaw_bin_link || true
+                ensure_npm_global_bin_on_path || true
+                refresh_shell_command_cache
                 return 0
             fi
         fi
@@ -829,6 +831,8 @@ install_openclaw_npm() {
             if run_npm_global_install "$spec" "$log"; then
                 ui_success "OpenClaw npm package installed"
                 ensure_openclaw_bin_link || true
+                ensure_npm_global_bin_on_path || true
+                refresh_shell_command_cache
                 return 0
             fi
             return 1
@@ -841,6 +845,8 @@ install_openclaw_npm() {
                 if run_npm_global_install "$spec" "$log"; then
                     ui_success "OpenClaw npm package installed"
                     ensure_openclaw_bin_link || true
+                    ensure_npm_global_bin_on_path || true
+                    refresh_shell_command_cache
                     return 0
                 fi
                 return 1
@@ -869,6 +875,8 @@ install_openclaw_npm() {
     fi
 
     ensure_openclaw_bin_link || true
+    ensure_npm_global_bin_on_path || true
+    refresh_shell_command_cache
     ui_success "OpenClaw npm package installed"
     return 0
 }
@@ -1900,11 +1908,15 @@ ensure_npm_global_bin_on_path() {
         *":${npm_bin}:"*) ;;
         *) export PATH="${npm_bin}:$PATH" ;;
     esac
+    refresh_shell_command_cache
 
     local line="export PATH=\"${npm_bin}:\$PATH\""
     local rc=""
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        if [[ -f "$rc" ]] && ! grep -q '\.npm-global/bin' "$rc"; then
+        if [[ ! -f "$rc" ]]; then
+            touch "$rc" 2>/dev/null || true
+        fi
+        if [[ -f "$rc" ]] && ! grep -Fq "$line" "$rc" && ! grep -Fq "${npm_bin}" "$rc"; then
             echo "$line" >> "$rc"
         fi
     done
@@ -1915,6 +1927,9 @@ print_path_fix_hint() {
     local npm_bin=""
     npm_bin="$(npm_global_bin_dir 2>/dev/null || true)"
     [[ -z "$npm_bin" ]] && return 0
+    if command -v openclaw >/dev/null 2>&1; then
+        return 0
+    fi
     ui_warn "Installed, but openclaw is not discoverable on PATH in this shell"
     ui_info "Run:"
     echo "  export PATH=\"${npm_bin}:\$PATH\""
@@ -2383,6 +2398,39 @@ try {
 ' >/dev/null 2>&1
 }
 
+systemd_user_unit_state() {
+    local unit="$1"
+    local out=""
+
+    out="$(systemctl --user is-enabled "$unit" 2>&1 || true)"
+    out="$(printf '%s' "$out" | head -n1 | tr -d '\r')"
+
+    case "$out" in
+        enabled|disabled|static|indirect|generated|masked)
+            echo "$out"
+            return 0
+            ;;
+        not-found)
+            echo "not-found"
+            return 0
+            ;;
+        *)
+            echo "unknown"
+            return 1
+            ;;
+    esac
+}
+
+systemd_user_available() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 1
+    fi
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
+}
+
 refresh_gateway_service_if_loaded() {
     local claw="${OPENCLAW_BIN:-}"
     if [[ -z "$claw" ]]; then
@@ -2392,26 +2440,58 @@ refresh_gateway_service_if_loaded() {
         return 0
     fi
 
-    if ! is_gateway_daemon_loaded "$claw"; then
+    if [[ "$OS" != "linux" ]]; then
         return 0
     fi
 
-    ui_info "Refreshing loaded gateway service"
-    if run_quiet_step "Refreshing gateway service" run_openclaw "$claw" gateway install --force; then
-        ui_success "Gateway service metadata refreshed"
-    else
-        ui_warn "Gateway service refresh failed; continuing"
+    if ! systemd_user_available; then
+        ui_warn "systemd user services unavailable, skipping gateway service setup"
         return 0
     fi
 
-    if run_quiet_step "Restarting gateway service" run_openclaw "$claw"  gateway restart; then
-        ui_success "Gateway service restarted"
-    else
-        ui_warn "Gateway service restart failed; continuing"
-        return 0
-    fi
+    local unit="openclaw-gateway.service"
+    local state=""
+    state="$(systemd_user_unit_state "$unit" || true)"
 
-    run_quiet_step "Probing gateway service" run_openclaw "$claw"  gateway status --probe --deep || true
+    case "$state" in
+        enabled|disabled|static|indirect|generated|masked)
+            ui_info "Gateway service detected"
+            if systemctl --user restart "$unit" >/dev/null 2>&1; then
+                ui_success "Gateway service restarted"
+            else
+                ui_warn "Gateway service restart failed; continuing"
+            fi
+            return 0
+            ;;
+        not-found)
+            ui_info "Gateway systemd unit not found"
+            ui_info "Installing gateway service..."
+            if run_quiet_step "Installing gateway service" run_openclaw "$claw" gateway install --force; then
+                ui_success "Gateway service installed"
+            else
+                ui_warn "Gateway service install failed; continuing"
+                return 0
+            fi
+            if ! systemctl --user daemon-reload >/dev/null 2>&1; then
+                ui_warn "systemd user daemon-reload failed; continuing"
+            fi
+            if systemctl --user enable "$unit" >/dev/null 2>&1; then
+                ui_success "Gateway service enabled"
+            else
+                ui_warn "Gateway service enable failed; continuing"
+            fi
+            if systemctl --user restart "$unit" >/dev/null 2>&1; then
+                ui_success "Gateway service started"
+            else
+                ui_warn "Gateway service start failed; continuing"
+            fi
+            return 0
+            ;;
+        *)
+            ui_warn "Unable to determine gateway systemd unit state; continuing"
+            return 0
+            ;;
+    esac
 }
 
 # Main installation flow
