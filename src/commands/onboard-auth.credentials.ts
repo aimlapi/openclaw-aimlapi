@@ -376,16 +376,16 @@ export async function setOpenrouterApiKey(
   });
 }
 
-export async function setAimlapiApiKey(key: string, agentDir?: string) {
-  const normalizedKey = key.trim();
-
+export async function setAimlapiApiKey(
+  key: SecretInput,
+  agentDir?: string,
+  options?: ApiKeyStorageOptions,
+) {
+  // Never persist the literal "undefined" (e.g. when prompt returns undefined and caller used String(key)).
+  const safeKey = typeof key === "string" && key === "undefined" ? "" : key;
   upsertAuthProfile({
     profileId: "aimlapi:default",
-    credential: {
-      type: "api_key",
-      provider: "aimlapi",
-      key: normalizedKey,
-    },
+    credential: buildApiKeyCredential("aimlapi", safeKey, undefined, options),
     agentDir: resolveAuthAgentDir(agentDir),
   });
 }

@@ -88,6 +88,7 @@ import {
 import type { AuthChoice, SecretInputMode } from "./onboard-types.js";
 import { OPENCODE_ZEN_DEFAULT_MODEL } from "./opencode-zen-model-default.js";
 import { detectZaiEndpoint } from "./zai-endpoint-detect.js";
+import {SecretInput} from "../config/types.secrets.ts";
 
 const API_KEY_TOKEN_PROVIDER_AUTH_CHOICE: Record<string, AuthChoice> = {
   openrouter: "openrouter-api-key",
