@@ -193,8 +193,8 @@ describe("applyAuthChoice", () => {
   it("prompts and writes provider API key for common providers", async () => {
     const scenarios: Array<{
       authChoice:
-        | "minimax-api"
-        | "minimax-api-key-cn"
+        | "minimax-global-api"
+        | "minimax-cn-api"
         | "synthetic-api-key"
         | "huggingface-api-key";
       promptContains: string;
@@ -205,17 +205,17 @@ describe("applyAuthChoice", () => {
       expectedModelPrefix?: string;
     }> = [
       {
-        authChoice: "minimax-api" as const,
+        authChoice: "minimax-global-api" as const,
         promptContains: "Enter MiniMax API key",
-        profileId: "minimax:default",
+        profileId: "minimax:global",
         provider: "minimax",
         token: "sk-minimax-test",
       },
       {
-        authChoice: "minimax-api-key-cn" as const,
-        promptContains: "Enter MiniMax China API key",
-        profileId: "minimax-cn:default",
-        provider: "minimax-cn",
+        authChoice: "minimax-cn-api" as const,
+        promptContains: "Enter MiniMax CN API key",
+        profileId: "minimax:cn",
+        provider: "minimax",
         token: "sk-minimax-test",
         expectedBaseUrl: MINIMAX_CN_API_BASE_URL,
       },
@@ -499,6 +499,15 @@ describe("applyAuthChoice", () => {
       profileId: "opencode:default",
       provider: "opencode",
       modelPrefix: "opencode/",
+      extraProfiles: ["opencode-go:default"],
+    },
+    {
+      authChoice: "opencode-go",
+      tokenProvider: "opencode-go",
+      profileId: "opencode-go:default",
+      provider: "opencode-go",
+      modelPrefix: "opencode-go/",
+      extraProfiles: ["opencode:default"],
     },
     {
       authChoice: "together-api-key",
@@ -523,7 +532,7 @@ describe("applyAuthChoice", () => {
     },
   ] as const)(
     "uses opts token for $authChoice without prompting",
-    async ({ authChoice, tokenProvider, profileId, provider, modelPrefix }) => {
+    async ({ authChoice, tokenProvider, profileId, provider, modelPrefix, extraProfiles }) => {
       await setupTempState();
 
       const text = vi.fn();
@@ -555,6 +564,9 @@ describe("applyAuthChoice", () => {
         ),
       ).toBe(true);
       expect((await readAuthProfile(profileId))?.key).toBe(token);
+      for (const extraProfile of extraProfiles ?? []) {
+        expect((await readAuthProfile(extraProfile))?.key).toBe(token);
+      }
     },
   );
 
@@ -677,7 +689,7 @@ describe("applyAuthChoice", () => {
         envValue: "gateway-ref-key",
         profileId: "vercel-ai-gateway:default",
         provider: "vercel-ai-gateway",
-        opts: { secretInputMode: "ref" },
+        opts: { secretInputMode: "ref" }, // pragma: allowlist secret
         expectEnvPrompt: false,
         expectedTextCalls: 1,
         expectedKeyRef: { source: "env", provider: "default", id: "AI_GATEWAY_API_KEY" },
@@ -743,7 +755,7 @@ describe("applyAuthChoice", () => {
 
   it("retries ref setup when provider preflight fails and can switch to env ref", async () => {
     await setupTempState();
-    process.env.OPENAI_API_KEY = "sk-openai-env";
+    process.env.OPENAI_API_KEY = "sk-openai-env"; // pragma: allowlist secret
 
     const selectValues: Array<"provider" | "env" | "filemain"> = ["provider", "filemain", "env"];
     const select = vi.fn(async (params: Parameters<WizardPrompter["select"]>[0]) => {
@@ -784,7 +796,7 @@ describe("applyAuthChoice", () => {
       prompter,
       runtime,
       setDefaultModel: false,
-      opts: { secretInputMode: "ref" },
+      opts: { secretInputMode: "ref" }, // pragma: allowlist secret
     });
 
     expect(result.config.auth?.profiles?.["openai:default"]).toMatchObject({
@@ -806,14 +818,15 @@ describe("applyAuthChoice", () => {
 
   it("keeps existing default model for explicit provider keys when setDefaultModel=false", async () => {
     const scenarios: Array<{
-      authChoice: "xai-api-key" | "opencode-zen";
+      authChoice: "xai-api-key" | "opencode-zen" | "opencode-go";
       token: string;
       promptMessage: string;
       existingPrimary: string;
       expectedOverride: string;
       profileId?: string;
       profileProvider?: string;
-      expectProviderConfigUndefined?: "opencode-zen";
+      extraProfileId?: string;
+      expectProviderConfigUndefined?: "opencode" | "opencode-go" | "opencode-zen";
       agentId?: string;
     }> = [
       {
@@ -829,10 +842,24 @@ describe("applyAuthChoice", () => {
       {
         authChoice: "opencode-zen",
         token: "sk-opencode-zen-test",
-        promptMessage: "Enter OpenCode Zen API key",
+        promptMessage: "Enter OpenCode API key",
         existingPrimary: "anthropic/claude-opus-4-5",
         expectedOverride: "opencode/claude-opus-4-6",
-        expectProviderConfigUndefined: "opencode-zen",
+        profileId: "opencode:default",
+        profileProvider: "opencode",
+        extraProfileId: "opencode-go:default",
+        expectProviderConfigUndefined: "opencode",
+      },
+      {
+        authChoice: "opencode-go",
+        token: "sk-opencode-go-test",
+        promptMessage: "Enter OpenCode API key",
+        existingPrimary: "anthropic/claude-opus-4-5",
+        expectedOverride: "opencode-go/kimi-k2.5",
+        profileId: "opencode-go:default",
+        profileProvider: "opencode-go",
+        extraProfileId: "opencode:default",
+        expectProviderConfigUndefined: "opencode-go",
       },
     ];
     for (const scenario of scenarios) {
@@ -863,6 +890,9 @@ describe("applyAuthChoice", () => {
           mode: "api_key",
         });
         expect((await readAuthProfile(scenario.profileId))?.key).toBe(scenario.token);
+      }
+      if (scenario.extraProfileId) {
+        expect((await readAuthProfile(scenario.extraProfileId))?.key).toBe(scenario.token);
       }
       if (scenario.expectProviderConfigUndefined) {
         expect(
@@ -953,7 +983,7 @@ describe("applyAuthChoice", () => {
 
   it("ignores legacy LiteLLM oauth profiles when selecting litellm-api-key", async () => {
     await setupTempState();
-    process.env.LITELLM_API_KEY = "sk-litellm-test";
+    process.env.LITELLM_API_KEY = "sk-litellm-test"; // pragma: allowlist secret
 
     const authProfilePath = authProfilePathForAgent(requireOpenClawAgentDir());
     await fs.writeFile(
@@ -1089,7 +1119,7 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
       textValues: string[];
       confirmValue: boolean;
       opts?: {
-        secretInputMode?: "ref";
+        secretInputMode?: "ref"; // pragma: allowlist secret
         cloudflareAiGatewayAccountId?: string;
         cloudflareAiGatewayGatewayId?: string;
         cloudflareAiGatewayApiKey?: string;
@@ -1117,7 +1147,7 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
         textValues: ["cf-account-id-ref", "cf-gateway-id-ref"],
         confirmValue: true,
         opts: {
-          secretInputMode: "ref",
+          secretInputMode: "ref", // pragma: allowlist secret
         },
         expectEnvPrompt: false,
         expectedTextCalls: 3,
@@ -1133,7 +1163,7 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
         opts: {
           cloudflareAiGatewayAccountId: "acc-direct",
           cloudflareAiGatewayGatewayId: "gw-direct",
-          cloudflareAiGatewayApiKey: "cf-direct-key",
+          cloudflareAiGatewayApiKey: "cf-direct-key", // pragma: allowlist secret
         },
         expectEnvPrompt: false,
         expectedTextCalls: 0,
@@ -1268,7 +1298,7 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
 
   it("writes portal OAuth credentials for plugin providers", async () => {
     const scenarios: Array<{
-      authChoice: "qwen-portal" | "minimax-portal";
+      authChoice: "qwen-portal" | "minimax-global-oauth";
       label: string;
       authId: string;
       authLabel: string;
@@ -1290,10 +1320,10 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
         baseUrl: "https://portal.qwen.ai/v1",
         api: "openai-completions",
         defaultModel: "qwen-portal/coder-model",
-        apiKey: "qwen-oauth",
+        apiKey: "qwen-oauth", // pragma: allowlist secret
       },
       {
-        authChoice: "minimax-portal",
+        authChoice: "minimax-global-oauth",
         label: "MiniMax",
         authId: "oauth",
         authLabel: "MiniMax OAuth (Global)",
@@ -1302,8 +1332,7 @@ it("prompts and writes AIMLAPI API key when no env var is set", async () => {
         baseUrl: "https://api.minimax.io/anthropic",
         api: "anthropic-messages",
         defaultModel: "minimax-portal/MiniMax-M2.5",
-        apiKey: "minimax-oauth",
-        selectValue: "oauth",
+        apiKey: "minimax-oauth", // pragma: allowlist secret
       },
     ];
     for (const scenario of scenarios) {
@@ -1392,10 +1421,12 @@ describe("resolvePreferredProviderForAuthChoice", () => {
       { authChoice: "qwen-portal" as const, expectedProvider: "qwen-portal" },
       { authChoice: "mistral-api-key" as const, expectedProvider: "mistral" },
       { authChoice: "aimlapi-api-key" as const, expectedProvider: "aimlapi" },
+      { authChoice: "ollama" as const, expectedProvider: "ollama" },
+      { authChoice: "aimlapi-api-key" as const, expectedProvider: "aimlapi" },
       { authChoice: "unknown" as AuthChoice, expectedProvider: undefined },
     ] as const;
     for (const scenario of scenarios) {
-      expect(resolvePreferredProviderForAuthChoice(scenario.authChoice)).toBe(
+      expect(resolvePreferredProviderForAuthChoice({ choice: scenario.authChoice })).toBe(
         scenario.expectedProvider,
       );
     }

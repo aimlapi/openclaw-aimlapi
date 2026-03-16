@@ -20,6 +20,7 @@ const MODEL_PICK_PROVIDER_PREFERENCE = [
   "openrouter",
   "aimlapi",
   "opencode",
+  "opencode-go",
   "github-copilot",
   "groq",
   "cerebras",
