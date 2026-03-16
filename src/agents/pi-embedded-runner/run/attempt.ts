@@ -2136,7 +2136,7 @@ export async function runEmbeddedAttempt(
                 },
               );
             }
-            options?.onPayload?.(payload);
+            options?.onPayload?.(payload, model);
           };
           return previousStreamFn(model, context, {
             ...options,

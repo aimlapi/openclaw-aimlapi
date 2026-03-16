@@ -227,7 +227,7 @@ export function createAimlapiPayloadLogger(params: {
               : undefined,
           },
         });
-        options?.onPayload?.(payload);
+        options?.onPayload?.(payload, model);
       };
       return streamFn(model, context, {
         ...options,
