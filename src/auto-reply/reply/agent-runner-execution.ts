@@ -8,8 +8,10 @@ import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import {
   isAuthErrorMessage,
+  BILLING_ERROR_USER_MESSAGE,
   isCompactionFailureError,
   isContextOverflowError,
+  isBillingErrorMessage,
   isLikelyContextOverflowError,
   isTransientHttpError,
   sanitizeUserFacingText,
@@ -40,13 +42,13 @@ import {
 } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import {
-  buildEmbeddedRunBaseParams,
-  buildEmbeddedRunContexts,
+  buildEmbeddedRunExecutionParams,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
+import { createReplyMediaPathNormalizer } from "./reply-media-paths.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
 export type RuntimeFallbackAttempt = {
@@ -108,6 +110,11 @@ export async function runAgentTurnWithFallback(params: {
   const directlySentBlockKeys = new Set<string>();
 
   const runId = params.opts?.runId ?? crypto.randomUUID();
+  const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
+    cfg: params.followupRun.run.config,
+    sessionKey: params.sessionKey,
+    workspaceDir: params.followupRun.run.workspaceDir,
+  });
   let didNotifyAgentRunStart = false;
   const notifyAgentRunStart = () => {
     if (didNotifyAgentRunStart) {
@@ -195,6 +202,7 @@ export async function runAgentTurnWithFallback(params: {
       const onToolResult = params.opts?.onToolResult;
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
+        runId,
         run: (provider, model, runOptions) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
@@ -301,20 +309,17 @@ export async function runAgentTurnWithFallback(params: {
               }
             })();
           }
-          const { authProfile, embeddedContext, senderContext } = buildEmbeddedRunContexts({
-            run: params.followupRun.run,
-            sessionCtx: params.sessionCtx,
-            hasRepliedRef: params.opts?.hasRepliedRef,
-            provider,
-          });
-          const runBaseParams = buildEmbeddedRunBaseParams({
-            run: params.followupRun.run,
-            provider,
-            model,
-            runId,
-            authProfile,
-            allowRateLimitCooldownProbe: runOptions?.allowRateLimitCooldownProbe,
-          });
+          const { embeddedContext, senderContext, runBaseParams } = buildEmbeddedRunExecutionParams(
+            {
+              run: params.followupRun.run,
+              sessionCtx: params.sessionCtx,
+              hasRepliedRef: params.opts?.hasRepliedRef,
+              provider,
+              runId,
+              allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
+              model,
+            },
+          );
           return (async () => {
             const result = await runEmbeddedPiAgent({
               ...embeddedContext,
@@ -386,11 +391,15 @@ export async function runAgentTurnWithFallback(params: {
                     await params.opts?.onToolStart?.({ name, phase });
                   }
                 }
-                // Track auto-compaction completion
+                // Track auto-compaction completion and notify UI layer
                 if (evt.stream === "compaction") {
                   const phase = typeof evt.data.phase === "string" ? evt.data.phase : "";
+                  if (phase === "start") {
+                    await params.opts?.onCompactionStart?.();
+                  }
                   if (phase === "end") {
                     autoCompactionCompleted = true;
+                    await params.opts?.onCompactionEnd?.();
                   }
                 }
               },
@@ -404,6 +413,7 @@ export async function runAgentTurnWithFallback(params: {
                       params.sessionCtx.MessageSidFull ?? params.sessionCtx.MessageSid,
                     normalizeStreamingText,
                     applyReplyToMode: params.applyReplyToMode,
+                    normalizeMediaPaths: normalizeReplyMediaPaths,
                     typingSignals: params.typingSignals,
                     blockStreamingEnabled: params.blockStreamingEnabled,
                     blockReplyPipeline,
@@ -439,8 +449,8 @@ export async function runAgentTurnWithFallback(params: {
                           }
                           await params.typingSignals.signalTextDelta(text);
                           await onToolResult({
+                            ...payload,
                             text,
-                            mediaUrls: payload.mediaUrls,
                           });
                         })
                         .catch((err) => {
@@ -508,8 +518,9 @@ export async function runAgentTurnWithFallback(params: {
       break;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const isContextOverflow = isLikelyContextOverflowError(message);
-      const isCompactionFailure = isCompactionFailureError(message);
+      const isBilling = isBillingErrorMessage(message);
+      const isContextOverflow = !isBilling && isLikelyContextOverflowError(message);
+      const isCompactionFailure = !isBilling && isCompactionFailureError(message);
       const isSessionCorruption = /function call turn comes immediately after/i.test(message);
       const isRoleOrderingError = /incorrect role information|roles must alternate/i.test(message);
       const isTransientHttp = isTransientHttpError(message);
@@ -636,11 +647,13 @@ export async function runAgentTurnWithFallback(params: {
         ? sanitizeUserFacingText(message, { errorContext: true })
         : message;
       const trimmedMessage = safeMessage.replace(/\.\s*$/, "");
-      const fallbackText = isContextOverflow
-        ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model."
-        : isRoleOrderingError
-          ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session."
-          : `⚠️ Agent failed before reply: ${trimmedMessage}.\nLogs: openclaw logs --follow`;
+      const fallbackText = isBilling
+        ? BILLING_ERROR_USER_MESSAGE
+        : isContextOverflow
+          ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model."
+          : isRoleOrderingError
+            ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session."
+            : `⚠️ Agent failed before reply: ${trimmedMessage}.\nLogs: openclaw logs --follow`;
 
       return {
         kind: "final",

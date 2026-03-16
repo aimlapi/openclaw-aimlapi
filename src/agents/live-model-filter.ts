@@ -81,8 +81,13 @@ export function isModernModelRef(ref: ModelRef): boolean {
     return false;
   }
 
-  if (provider === "openrouter" || provider === "opencode" || provider === "aimlapi") {
-    // OpenRouter/opencode/AIMLAPI are pass-through proxies; accept any model ID
+  if (
+    provider === "openrouter" ||
+    provider === "opencode" ||
+    provider === "opencode-go" ||
+    provider === "aimlapi"
+  ) {
+    // OpenRouter/OpenCode/AIMLAPI are pass-through proxies; accept any model ID
     // rather than restricting to a static prefix list.
     return true;
   }
