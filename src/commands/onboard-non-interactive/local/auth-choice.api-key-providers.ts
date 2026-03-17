@@ -1,9 +1,8 @@
 import type { OpenClawConfig } from "../../../config/config.js";
 import type { SecretInput } from "../../../config/types.secrets.js";
 import { applyAuthProfileConfig } from "../../../plugins/provider-auth-helpers.js";
-import { setAimlapiApiKey, setLitellmApiKey } from "../../../plugins/provider-auth-storage.js";
+import { setLitellmApiKey } from "../../../plugins/provider-auth-storage.js";
 import type { RuntimeEnv } from "../../../runtime.js";
-import { applyAimlapiConfig } from "../../auth-choice.apply.api-key-providers.js";
 import { applyLitellmConfig } from "../../onboard-auth.config-litellm.js";
 import type { AuthChoice, OnboardOptions } from "../../onboard-types.js";
 
@@ -36,34 +35,6 @@ export async function applySimpleNonInteractiveApiKeyChoice(params: {
     setter: (value: SecretInput) => Promise<void> | void,
   ) => Promise<boolean>;
 }): Promise<OpenClawConfig | null | undefined> {
-  if (params.authChoice === "aimlapi-api-key") {
-    const resolved = await params.resolveApiKey({
-      provider: "aimlapi",
-      cfg: params.baseConfig,
-      flagValue: params.opts.aimlapiApiKey,
-      flagName: "--aimlapi-api-key",
-      envVar: "AIMLAPI_API_KEY",
-      runtime: params.runtime,
-    });
-    if (!resolved) {
-      return null;
-    }
-    if (
-      !(await params.maybeSetResolvedApiKey(resolved, (value) =>
-        setAimlapiApiKey(value, undefined, params.apiKeyStorageOptions),
-      ))
-    ) {
-      return null;
-    }
-    return applyAimlapiConfig(
-      applyAuthProfileConfig(params.nextConfig, {
-        profileId: "aimlapi:default",
-        provider: "aimlapi",
-        mode: "api_key",
-      }),
-    );
-  }
-
   if (params.authChoice !== "litellm-api-key") {
     return undefined;
   }

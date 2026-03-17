@@ -65,7 +65,6 @@ import {
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
-import { formatAimlapiToolSchemaError, isAimlapiInvalidToolSchemaError } from "./aimlapi.js";
 import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import { resolveModelAsync } from "./model.js";
@@ -106,11 +105,6 @@ const OVERLOAD_FAILOVER_BACKOFF_POLICY: BackoffPolicy = {
 // Avoid Anthropic's refusal test token poisoning session transcripts.
 const ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL = "ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL";
 const ANTHROPIC_MAGIC_STRING_REPLACEMENT = "ANTHROPIC MAGIC STRING TRIGGER REFUSAL (redacted)";
-
-function shouldLogAimlapiDiagnostics(): boolean {
-  const value = process.env.OPENCLAW_AIMLAPI_DEBUG_LOG?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
 
 function scrubAnthropicRefusalMagic(prompt: string): string {
   if (!prompt.includes(ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL)) {
@@ -1314,47 +1308,6 @@ export async function runEmbeddedPiAgent(
             if (await maybeRefreshRuntimeAuthForAuthError(errorText, runtimeAuthRetry)) {
               authRetryPending = true;
               continue;
-            }
-
-            // AIMLAPI: return dedicated invalid-tool-schema payload (no retries)
-            if (provider === "aimlapi") {
-              if (shouldLogAimlapiDiagnostics()) {
-                log.warn("aimlapi run: prompt failed before assistant response", {
-                  runId: params.runId,
-                  sessionId: params.sessionId,
-                  model: `${provider}/${modelId}`,
-                  error: errorText.slice(0, 800),
-                });
-              }
-
-              if (isAimlapiInvalidToolSchemaError(errorText)) {
-                if (shouldLogAimlapiDiagnostics()) {
-                  log.warn("aimlapi run: returning dedicated invalid-tool-schema payload", {
-                    runId: params.runId,
-                    sessionId: params.sessionId,
-                    model: `${provider}/${modelId}`,
-                  });
-                }
-
-                return {
-                  payloads: [
-                    {
-                      text: formatAimlapiToolSchemaError(errorText),
-                      isError: true,
-                    },
-                  ],
-                  meta: {
-                    durationMs: Date.now() - started,
-                    agentMeta: {
-                      sessionId: sessionIdUsed,
-                      provider,
-                      model: model.id,
-                    },
-                    systemPromptReport: attempt.systemPromptReport,
-                    error: { kind: "aimlapi_invalid_tool_schema", message: errorText },
-                  },
-                };
-              }
             }
 
             // Handle role ordering errors with a user-friendly message

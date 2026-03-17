@@ -70,6 +70,34 @@ export {
 } from "../../extensions/zai/model-definitions.js";
 
 export {
+  AIMLAPI_BASE_URL,
+  AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+  AIMLAPI_DEFAULT_COST,
+  AIMLAPI_DEFAULT_MAX_TOKENS,
+  AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_STATIC_CATALOG,
+  discoverAimlapiModels,
+} from "../agents/aimlapi-models.js";
+export const AIMLAPI_DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-nano-2025-08-07";
+
+export function buildAimlapiModelDefinition(): ModelDefinitionConfig {
+  return {
+    id: "openai/gpt-5-nano-2025-08-07",
+    name: "GPT-5 Nano (2025-08-07)",
+    reasoning: false,
+    input: ["text", "image"],
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128000,
+    maxTokens: 16384,
+  };
+}
+
+export {
   buildCloudflareAiGatewayModelDefinition,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
   resolveCloudflareAiGatewayBaseUrl,

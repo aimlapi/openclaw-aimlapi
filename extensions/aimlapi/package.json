@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/aimlapi-provider",
+  "version": "2026.3.14",
+  "private": true,
+  "description": "OpenClaw AIMLAPI provider plugin",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

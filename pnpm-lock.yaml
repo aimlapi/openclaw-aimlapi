@@ -274,6 +274,8 @@ importers:
         specifier: 0.3.0
         version: 0.3.0(zod@4.3.6)
 
+  extensions/aimlapi: {}
+
   extensions/amazon-bedrock: {}
 
   extensions/anthropic: {}

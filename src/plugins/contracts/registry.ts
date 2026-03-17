@@ -1,3 +1,4 @@
+import aimlapiPlugin from "../../../extensions/aimlapi/index.js";
 import amazonBedrockPlugin from "../../../extensions/amazon-bedrock/index.js";
 import anthropicPlugin from "../../../extensions/anthropic/index.js";
 import bravePlugin from "../../../extensions/brave/index.js";
@@ -76,6 +77,7 @@ type PluginRegistrationContractEntry = {
 };
 
 const bundledProviderPlugins: RegistrablePlugin[] = [
+  aimlapiPlugin,
   amazonBedrockPlugin,
   anthropicPlugin,
   byteplusPlugin,

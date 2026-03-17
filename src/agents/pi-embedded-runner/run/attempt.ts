@@ -35,7 +35,6 @@ import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
-import { createAimlapiPayloadLogger } from "../../aimlapi-payload-log.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import {
   analyzeBootstrapBudget,
@@ -100,12 +99,6 @@ import { normalizeToolName } from "../../tool-policy.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
-import {
-  normalizeAimlapiAssistantNullContent,
-  normalizeAimlapiPayloadNullContent,
-  rollbackFailedAimlapiPrompt,
-  sanitizeToolsForAimlapi,
-} from "../aimlapi.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import type { CompactEmbeddedPiSessionParams } from "../compact.js";
 import { resolveCompactionTimeoutMs } from "../compaction-safety-timeout.js";
@@ -725,10 +718,6 @@ export function resolveOllamaBaseUrlForRun(params: {
   return OLLAMA_NATIVE_BASE_URL;
 }
 
-function shouldLogAimlapiDiagnostics(): boolean {
-  const value = process.env.OPENCLAW_AIMLAPI_DEBUG_LOG?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
 function trimWhitespaceFromToolCallNamesInMessage(
   message: unknown,
   allowedToolNames?: Set<string>,
@@ -1574,10 +1563,7 @@ export async function runEmbeddedAttempt(
       tools: toolsEnabled ? toolsRaw : [],
       provider: params.provider,
     });
-    const tools = sanitizeToolsForAimlapi({
-      tools: googleSanitizedTools,
-      provider: params.provider,
-    });
+    const tools = googleSanitizedTools;
     const clientTools = toolsEnabled ? params.clientTools : undefined;
     const bundleMcpRuntime = toolsEnabled
       ? await createBundleMcpToolRuntime({
@@ -1936,17 +1922,6 @@ export async function runEmbeddedAttempt(
         modelApi: params.model.api,
         workspaceDir: params.workspaceDir,
       });
-      const aimlapiPayloadLogger = createAimlapiPayloadLogger({
-        env: process.env,
-        runId: params.runId,
-        sessionId: activeSession.sessionId,
-        sessionKey: params.sessionKey,
-        provider: params.provider,
-        modelId: params.modelId,
-        modelApi: params.model.api,
-        workspaceDir: params.workspaceDir,
-      });
-
       // Ollama native API: bypass SDK's streamSimple and use direct /api/chat calls
       // for reliable streaming + tool calling support (#11828).
       if (params.model.api === "ollama") {
@@ -2130,57 +2105,6 @@ export async function runEmbeddedAttempt(
           activeSession.agent.streamFn,
         );
       }
-      if (params.provider === "aimlapi") {
-        const previousStreamFn = activeSession.agent.streamFn;
-        activeSession.agent.streamFn = (model, context, options) => {
-          if (context && typeof context === "object") {
-            const maybeMessages = (context as { messages?: unknown }).messages;
-            if (Array.isArray(maybeMessages)) {
-              const replacedCount = normalizeAimlapiAssistantNullContent({
-                provider: params.provider,
-                messages: maybeMessages as AgentMessage[],
-              }).replacedCount;
-              if (replacedCount > 0 && shouldLogAimlapiDiagnostics()) {
-                log.warn(
-                  "aimlapi stream guard: normalized null assistant content in stream context",
-                  {
-                    runId: params.runId,
-                    sessionId: params.sessionId,
-                    replacedCount,
-                  },
-                );
-              }
-            }
-          }
-          const nextOnPayload = (payload: unknown) => {
-            const normalized = normalizeAimlapiPayloadNullContent({
-              provider: params.provider,
-              payload,
-            });
-            if (normalized.replacedCount > 0 && shouldLogAimlapiDiagnostics()) {
-              log.warn(
-                "aimlapi stream guard: normalized null assistant content in outbound payload",
-                {
-                  runId: params.runId,
-                  sessionId: params.sessionId,
-                  replacedCount: normalized.replacedCount,
-                },
-              );
-            }
-            options?.onPayload?.(payload, model);
-          };
-          return previousStreamFn(model, context, {
-            ...options,
-            onPayload: nextOnPayload,
-          });
-        };
-      }
-      if (aimlapiPayloadLogger) {
-        activeSession.agent.streamFn = aimlapiPayloadLogger.wrapStreamFn(
-          activeSession.agent.streamFn,
-        );
-      }
-
       try {
         const prior = await sanitizeSessionHistory({
           messages: activeSession.messages,
@@ -2211,18 +2135,11 @@ export async function runEmbeddedAttempt(
           ? sanitizeToolUseResultPairing(truncated)
           : truncated;
 
-        const normalizedForAimlapi = normalizeAimlapiAssistantNullContent({
-          provider: params.provider,
+        cacheTrace?.recordStage("session:limited", {
           messages: limited,
         });
 
-        cacheTrace?.recordStage("session:limited", {
-          messages: normalizedForAimlapi.messages,
-        });
-
-        if (normalizedForAimlapi.messages.length > 0 || normalizedForAimlapi.replacedCount > 0) {
-          activeSession.agent.replaceMessages(normalizedForAimlapi.messages);
-        }
+        activeSession.agent.replaceMessages(limited);
 
         if (params.contextEngine) {
           try {
@@ -2641,11 +2558,6 @@ export async function runEmbeddedAttempt(
 
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
-          aimlapiPayloadLogger?.recordPromptStart({
-            prompt: effectivePrompt,
-            messageCount: activeSession.messages.length,
-            imageCount: imageResult.images.length,
-          });
           log.info("embedded run: sending prompt to provider", {
             runId: params.runId,
             sessionId: params.sessionId,
@@ -2683,35 +2595,9 @@ export async function runEmbeddedAttempt(
           } else {
             promptError = err;
             promptErrorSource = "prompt";
-            aimlapiPayloadLogger?.recordPromptError(err);
-            if (params.provider === "aimlapi" && shouldLogAimlapiDiagnostics()) {
-              log.warn(
-                "aimlapi run attempt: prompt failed, evaluating invalid-tool-schema rollback",
-                {
-                  runId: params.runId,
-                  sessionId: params.sessionId,
-                  error: describeUnknownError(err).slice(0, 600),
-                },
-              );
-            }
-            rollbackFailedAimlapiPrompt({
-              provider: params.provider,
-              promptError,
-              sessionManager,
-              activeMessages: activeSession.messages,
-              runId: params.runId,
-              sessionId: params.sessionId,
-              replaceMessages: (messages) => activeSession.agent.replaceMessages(messages),
-            });
           }
         } finally {
           const promptDurationMs = Date.now() - promptStartedAt;
-          aimlapiPayloadLogger?.recordPromptFinish({
-            durationMs: promptDurationMs,
-            messageCount: activeSession.messages.length,
-            aborted,
-            timedOut,
-          });
           log.debug(
             `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${promptDurationMs}`,
           );
@@ -2895,7 +2781,6 @@ export async function runEmbeddedAttempt(
               : undefined,
         });
         anthropicPayloadLogger?.recordUsage(messagesSnapshot, promptError);
-        aimlapiPayloadLogger?.recordResponse(messagesSnapshot);
 
         // Run agent_end hooks to allow plugins to analyze the conversation
         // This is fire-and-forget, so we don't await

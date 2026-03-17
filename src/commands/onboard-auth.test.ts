@@ -4,6 +4,10 @@ import path from "node:path";
 import type { OAuthCredentials } from "@mariozechner/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyAimlapiConfig,
+  applyAimlapiProviderConfig,
+} from "../../extensions/aimlapi/onboard.js";
+import {
   applyMinimaxApiConfig,
   applyMinimaxApiProviderConfig,
 } from "../../extensions/minimax/onboard.js";
@@ -42,10 +46,6 @@ import {
   resolveAgentModelPrimaryValue,
 } from "../config/model-input.js";
 import type { ModelApi } from "../config/types.models.js";
-import {
-  applyAimlapiConfig,
-  applyAimlapiProviderConfig,
-} from "./auth-choice.apply.api-key-providers.js";
 import {
   MISTRAL_DEFAULT_MODEL_REF,
   ZAI_CODING_CN_BASE_URL,

@@ -6,6 +6,7 @@ import cloudflareAiGatewayPlugin from "../../extensions/cloudflare-ai-gateway/in
 import googlePlugin from "../../extensions/google/index.js";
 import huggingfacePlugin from "../../extensions/huggingface/index.js";
 import kimiCodingPlugin from "../../extensions/kimi-coding/index.js";
+import aimlapiPlugin from "../../extensions/aimlapi/index.js";
 import minimaxPlugin from "../../extensions/minimax/index.js";
 import mistralPlugin from "../../extensions/mistral/index.js";
 import moonshotPlugin from "../../extensions/moonshot/index.js";
@@ -84,6 +85,7 @@ type StoredAuthProfile = {
 function createDefaultProviderPlugins() {
   return registerProviderPlugins(
     anthropicPlugin,
+    aimlapiPlugin,
     cloudflareAiGatewayPlugin,
     googlePlugin,
     huggingfacePlugin,
@@ -1222,7 +1224,7 @@ describe("applyAuthChoice", () => {
 
   expect(confirm).toHaveBeenCalledWith(
     expect.objectContaining({
-      message: expect.stringContaining("AI/ML API key"),
+      message: expect.stringContaining("AIMLAPI_API_KEY"),
     }),
   );
   expect(text).not.toHaveBeenCalled();

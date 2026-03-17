@@ -18,10 +18,6 @@ import {
   resolveCacheRetention,
 } from "./anthropic-stream-wrappers.js";
 import { log } from "./logger.js";
-
-// AIMLAPI defaults max_tokens to 512 when not set, which truncates tool call JSON.
-// Override with a safe default so tool calls are never silently cut off.
-const AIMLAPI_DEFAULT_MAX_TOKENS = 32768;
 import {
   createMoonshotThinkingWrapper,
   resolveMoonshotThinkingType,
@@ -294,9 +290,7 @@ export function applyExtraParamsToAgent(
           Object.entries(extraParamsOverride).filter(([, value]) => value !== undefined),
         )
       : undefined;
-  const providerDefaults: Record<string, unknown> =
-    provider === "aimlapi" ? { maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS } : {};
-  const merged = Object.assign({}, providerDefaults, resolvedExtraParams, override);
+  const merged = Object.assign({}, resolvedExtraParams, override);
   const effectiveExtraParams =
     prepareProviderExtraParams({
       provider,
