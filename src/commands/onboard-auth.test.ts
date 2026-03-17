@@ -3,6 +3,43 @@ import os from "node:os";
 import path from "node:path";
 import type { OAuthCredentials } from "@mariozechner/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  applyAimlapiConfig,
+  applyAimlapiProviderConfig,
+} from "../../extensions/aimlapi/onboard.js";
+import {
+  applyMinimaxApiConfig,
+  applyMinimaxApiProviderConfig,
+} from "../../extensions/minimax/onboard.js";
+import {
+  applyMistralConfig,
+  applyMistralProviderConfig,
+} from "../../extensions/mistral/onboard.js";
+import {
+  applyOpencodeGoConfig,
+  applyOpencodeGoProviderConfig,
+} from "../../extensions/opencode-go/onboard.js";
+import {
+  applyOpencodeZenConfig,
+  applyOpencodeZenProviderConfig,
+} from "../../extensions/opencode/onboard.js";
+import {
+  applyOpenrouterConfig,
+  applyOpenrouterProviderConfig,
+} from "../../extensions/openrouter/onboard.js";
+import {
+  applySyntheticConfig,
+  applySyntheticProviderConfig,
+  SYNTHETIC_DEFAULT_MODEL_REF,
+} from "../../extensions/synthetic/onboard.js";
+import {
+  applyXaiConfig,
+  applyXaiProviderConfig,
+  XAI_DEFAULT_MODEL_REF,
+} from "../../extensions/xai/onboard.js";
+import { applyXiaomiConfig, applyXiaomiProviderConfig } from "../../extensions/xiaomi/onboard.js";
+import { applyZaiConfig, applyZaiProviderConfig } from "../../extensions/zai/onboard.js";
+import { SYNTHETIC_DEFAULT_MODEL_ID } from "../agents/synthetic-models.js";
 import type { OpenClawConfig } from "../config/config.js";
 import {
   resolveAgentModelFallbackValues,
@@ -10,39 +47,18 @@ import {
 } from "../config/model-input.js";
 import type { ModelApi } from "../config/types.models.js";
 import {
-  applyAuthProfileConfig,
-  applyLitellmProviderConfig,
-  applyMistralConfig,
-  applyMistralProviderConfig,
-  applyAimlapiConfig,
-  applyAimlapiProviderConfig,
-  applyMinimaxApiConfig,
-  applyMinimaxApiProviderConfig,
-  applyOpencodeGoConfig,
-  applyOpencodeGoProviderConfig,
-  applyOpencodeZenConfig,
-  applyOpencodeZenProviderConfig,
-  applyOpenrouterConfig,
-  applyOpenrouterProviderConfig,
-  applySyntheticConfig,
-  applySyntheticProviderConfig,
-  applyXaiConfig,
-  applyXaiProviderConfig,
-  applyXiaomiConfig,
-  applyXiaomiProviderConfig,
-  applyZaiConfig,
-  applyZaiProviderConfig,
-  AIMLAPI_DEFAULT_MODEL_REF,
-  OPENROUTER_DEFAULT_MODEL_REF,
   MISTRAL_DEFAULT_MODEL_REF,
-  SYNTHETIC_DEFAULT_MODEL_ID,
-  SYNTHETIC_DEFAULT_MODEL_REF,
-  XAI_DEFAULT_MODEL_REF,
-  setMinimaxApiKey,
-  writeOAuthCredentials,
   ZAI_CODING_CN_BASE_URL,
   ZAI_GLOBAL_BASE_URL,
-} from "./onboard-auth.js";
+} from "../plugin-sdk/provider-models.js";
+import { applyAuthProfileConfig } from "../plugins/provider-auth-helpers.js";
+import {
+  AIMLAPI_DEFAULT_MODEL_REF,
+  OPENROUTER_DEFAULT_MODEL_REF,
+  setMinimaxApiKey,
+  writeOAuthCredentials,
+} from "../plugins/provider-auth-storage.js";
+import { applyLitellmProviderConfig } from "./onboard-auth.config-litellm.js";
 import {
   createAuthTestLifecycle,
   readAuthProfilesForAgent,
@@ -470,12 +486,13 @@ describe("applyZaiConfig", () => {
   it("adds zai provider with correct settings", () => {
     const cfg = applyZaiConfig({});
     expect(cfg.models?.providers?.zai).toMatchObject({
-      // Default: general (non-coding) endpoint. Coding Plan endpoint is detected during onboarding.
+      // Default: general (non-coding) endpoint. Coding Plan endpoint is detected during setup.
       baseUrl: ZAI_GLOBAL_BASE_URL,
       api: "openai-completions",
     });
     const ids = cfg.models?.providers?.zai?.models?.map((m) => m.id);
     expect(ids).toContain("glm-5");
+    expect(ids).toContain("glm-5-turbo");
     expect(ids).toContain("glm-4.7");
     expect(ids).toContain("glm-4.7-flash");
     expect(ids).toContain("glm-4.7-flashx");
@@ -782,7 +799,9 @@ describe("applyAimlapiProviderConfig", () => {
 describe("applyAimlapiConfig", () => {
   it("sets correct primary model", () => {
     const cfg = applyAimlapiConfig({});
-    expect(cfg.agents?.defaults?.model?.primary).toBe(AIMLAPI_DEFAULT_MODEL_REF);
+    expect(resolveAgentModelPrimaryValue(cfg.agents?.defaults?.model)).toBe(
+      AIMLAPI_DEFAULT_MODEL_REF,
+    );
   });
 
   it("preserves existing model fallbacks", () => {
@@ -793,6 +812,8 @@ describe("applyAimlapiConfig", () => {
         },
       },
     });
-    expect(cfg.agents?.defaults?.model?.fallbacks).toEqual(["anthropic/claude-opus-4-5"]);
+    expect(resolveAgentModelFallbackValues(cfg.agents?.defaults?.model)).toEqual([
+      "anthropic/claude-opus-4-5",
+    ]);
   });
 });

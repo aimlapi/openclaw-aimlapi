@@ -85,7 +85,7 @@ function mapAimlapiModel(model: AimlapiModel): ModelDefinitionConfig {
 }
 
 export async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> {
-  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
     return AIMLAPI_STATIC_CATALOG;
   }
   if (discoveryCache) {

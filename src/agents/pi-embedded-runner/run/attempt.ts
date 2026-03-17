@@ -16,6 +16,11 @@ import {
   ensureGlobalUndiciStreamTimeouts,
 } from "../../../infra/net/undici-global-dispatcher.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
+import { resolveSignalReactionLevel } from "../../../plugin-sdk/signal.js";
+import {
+  resolveTelegramInlineButtonsScope,
+  resolveTelegramReactionLevel,
+} from "../../../plugin-sdk/telegram.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import type {
   PluginHookAgentContext,
@@ -24,22 +29,19 @@ import type {
 } from "../../../plugins/types.js";
 import { isCronSessionKey, isSubagentSessionKey } from "../../../routing/session-key.js";
 import { joinPresentTextSegments } from "../../../shared/text/join-segments.js";
-import { resolveSignalReactionLevel } from "../../../signal/reaction-level.js";
-import { resolveTelegramInlineButtonsScope } from "../../../telegram/inline-buttons.js";
-import { resolveTelegramReactionLevel } from "../../../telegram/reaction-level.js";
 import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { resolveUserPath } from "../../../utils.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
-import { createAimlapiPayloadLogger } from "../../aimlapi-payload-log.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import {
   analyzeBootstrapBudget,
   buildBootstrapPromptWarning,
   buildBootstrapTruncationReportMeta,
   buildBootstrapInjectionStats,
+  prependBootstrapPromptWarning,
 } from "../../bootstrap-budget.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
 import { createCacheTrace } from "../../cache-trace.js";
@@ -55,9 +57,10 @@ import { resolveImageSanitizationLimits } from "../../image-sanitization.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { normalizeProviderId, resolveDefaultModelForAgent } from "../../model-selection.js";
 import { supportsModelTools } from "../../model-tool-support.js";
-import { createConfiguredOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { createConfiguredOllamaStreamFn } from "../../ollama-stream.js";
 import { createOpenAIWebSocketStreamFn, releaseWsSession } from "../../openai-ws-stream.js";
 import { resolveOwnerDisplaySetting } from "../../owner-display.js";
+import { createBundleMcpToolRuntime } from "../../pi-bundle-mcp-tools.js";
 import {
   downgradeOpenAIFunctionCallReasoningPairs,
   isCloudCodeAssistFormatError,
@@ -96,14 +99,9 @@ import { normalizeToolName } from "../../tool-policy.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
-import {
-  normalizeAimlapiAssistantNullContent,
-  normalizeAimlapiPayloadNullContent,
-  rollbackFailedAimlapiPrompt,
-  sanitizeToolsForAimlapi,
-} from "../aimlapi.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import type { CompactEmbeddedPiSessionParams } from "../compact.js";
+import { resolveCompactionTimeoutMs } from "../compaction-safety-timeout.js";
 import { buildEmbeddedExtensionFactories } from "../extensions.js";
 import { applyExtraParamsToAgent } from "../extra-params.js";
 import {
@@ -118,6 +116,7 @@ import {
   clearActiveEmbeddedRun,
   type EmbeddedPiQueueHandle,
   setActiveEmbeddedRun,
+  updateActiveEmbeddedRunSnapshot,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
@@ -136,6 +135,8 @@ import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import { waitForCompactionRetryWithAggregateTimeout } from "./compaction-retry-aggregate-timeout.js";
 import {
+  resolveRunTimeoutDuringCompaction,
+  resolveRunTimeoutWithCompactionGraceMs,
   selectCompactionTimeoutSnapshot,
   shouldFlagCompactionTimeout,
 } from "./compaction-timeout.js";
@@ -670,6 +671,7 @@ function normalizeToolCallIdsInMessage(message: unknown): void {
   }
 
   let fallbackIndex = 1;
+  const assignedIds = new Set<string>();
   for (const block of content) {
     if (!block || typeof block !== "object") {
       continue;
@@ -681,42 +683,26 @@ function normalizeToolCallIdsInMessage(message: unknown): void {
     if (typeof typedBlock.id === "string") {
       const trimmedId = typedBlock.id.trim();
       if (trimmedId) {
-        if (typedBlock.id !== trimmedId) {
-          typedBlock.id = trimmedId;
+        if (!assignedIds.has(trimmedId)) {
+          if (typedBlock.id !== trimmedId) {
+            typedBlock.id = trimmedId;
+          }
+          assignedIds.add(trimmedId);
+          continue;
         }
-        usedIds.add(trimmedId);
-        continue;
       }
     }
 
     let fallbackId = "";
-    while (!fallbackId || usedIds.has(fallbackId)) {
+    while (!fallbackId || usedIds.has(fallbackId) || assignedIds.has(fallbackId)) {
       fallbackId = `call_auto_${fallbackIndex++}`;
     }
     typedBlock.id = fallbackId;
     usedIds.add(fallbackId);
+    assignedIds.add(fallbackId);
   }
 }
 
-export function resolveOllamaBaseUrlForRun(params: {
-  modelBaseUrl?: string;
-  providerBaseUrl?: string;
-}): string {
-  const providerBaseUrl = params.providerBaseUrl?.trim() ?? "";
-  if (providerBaseUrl) {
-    return providerBaseUrl;
-  }
-  const modelBaseUrl = params.modelBaseUrl?.trim() ?? "";
-  if (modelBaseUrl) {
-    return modelBaseUrl;
-  }
-  return OLLAMA_NATIVE_BASE_URL;
-}
-
-function shouldLogAimlapiDiagnostics(): boolean {
-  const value = process.env.OPENCLAW_AIMLAPI_DEBUG_LOG?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
 function trimWhitespaceFromToolCallNamesInMessage(
   message: unknown,
   allowedToolNames?: Set<string>,
@@ -856,6 +842,7 @@ function extractBalancedJsonPrefix(raw: string): string | null {
 const MAX_TOOLCALL_REPAIR_BUFFER_CHARS = 64_000;
 const MAX_TOOLCALL_REPAIR_TRAILING_CHARS = 3;
 const TOOLCALL_REPAIR_ALLOWED_TRAILING_RE = /^[^\s{}[\]":,\\]{1,3}$/;
+const MAX_BTW_SNAPSHOT_MESSAGES = 100;
 
 function shouldAttemptMalformedToolCallRepair(partialJson: string, delta: string): boolean {
   if (/[}\]]/.test(delta)) {
@@ -1024,7 +1011,7 @@ function wrapStreamRepairMalformedToolCallArguments(
                   if (!loggedRepairIndices.has(event.contentIndex)) {
                     loggedRepairIndices.add(event.contentIndex);
                     log.warn(
-                      `repairing kimi-coding tool call arguments after ${repair.trailingSuffix.length} trailing chars`,
+                      `repairing Kimi tool call arguments after ${repair.trailingSuffix.length} trailing chars`,
                     );
                   }
                 } else {
@@ -1079,7 +1066,7 @@ export function wrapStreamFnRepairMalformedToolCallArguments(baseFn: StreamFn): 
 }
 
 function shouldRepairMalformedAnthropicToolCallArguments(provider?: string): boolean {
-  return normalizeProviderId(provider ?? "") === "kimi-coding";
+  return normalizeProviderId(provider ?? "") === "kimi";
 }
 
 // ---------------------------------------------------------------------------
@@ -1523,6 +1510,7 @@ export async function runEmbeddedAttempt(
           senderUsername: params.senderUsername,
           senderE164: params.senderE164,
           senderIsOwner: params.senderIsOwner,
+          allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
           sessionKey: sandboxSessionKey,
           sessionId: params.sessionId,
           runId: params.runId,
@@ -1556,20 +1544,30 @@ export async function runEmbeddedAttempt(
           },
         });
     const toolsEnabled = supportsModelTools(params.model);
-    const googleSanitizedTools = sanitizeToolsForGoogle({
+    const tools = sanitizeToolsForGoogle({
       tools: toolsEnabled ? toolsRaw : [],
       provider: params.provider,
     });
     const clientTools = toolsEnabled ? params.clientTools : undefined;
+    const bundleMcpRuntime = toolsEnabled
+      ? await createBundleMcpToolRuntime({
+          workspaceDir: effectiveWorkspace,
+          cfg: params.config,
+          reservedToolNames: [
+            ...tools.map((tool) => tool.name),
+            ...(clientTools?.map((tool) => tool.function.name) ?? []),
+          ],
+        })
+      : undefined;
+    const effectiveTools =
+      bundleMcpRuntime && bundleMcpRuntime.tools.length > 0
+        ? [...tools, ...bundleMcpRuntime.tools]
+        : tools;
     const allowedToolNames = collectAllowedToolNames({
-      tools: googleSanitizedTools,
+      tools: effectiveTools,
       clientTools,
     });
-    const tools = sanitizeToolsForAimlapi({
-      tools: googleSanitizedTools,
-      provider: params.provider,
-    });
-    logToolSchemasForGoogle({ tools, provider: params.provider });
+    logToolSchemasForGoogle({ tools: effectiveTools, provider: params.provider });
 
     const machineName = await getMachineDisplayName();
     const runtimeChannel = normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
@@ -1668,6 +1666,9 @@ export async function runEmbeddedAttempt(
     });
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
     const ownerDisplay = resolveOwnerDisplaySetting(params.config);
+    const heartbeatPrompt = isDefaultAgent
+      ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+      : undefined;
 
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
@@ -1678,9 +1679,7 @@ export async function runEmbeddedAttempt(
       ownerDisplay: ownerDisplay.ownerDisplay,
       ownerDisplaySecret: ownerDisplay.ownerDisplaySecret,
       reasoningTagHint,
-      heartbeatPrompt: isDefaultAgent
-        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-        : undefined,
+      heartbeatPrompt,
       skillsPrompt,
       docsPath: docsPath ?? undefined,
       ttsHint,
@@ -1691,13 +1690,12 @@ export async function runEmbeddedAttempt(
       runtimeInfo,
       messageToolHints,
       sandboxInfo,
-      tools,
+      tools: effectiveTools,
       modelAliasLines: buildModelAliasLines(params.config),
       userTimezone,
       userTime,
       userTimeFormat,
       contextFiles,
-      bootstrapTruncationWarningLines: bootstrapPromptWarning.lines,
       memoryCitationsMode: params.config?.memory?.citations,
     });
     const systemPromptReport = buildSystemPromptReport({
@@ -1726,7 +1724,7 @@ export async function runEmbeddedAttempt(
       bootstrapFiles: hookAdjustedBootstrapFiles,
       injectedFiles: contextFiles,
       skillsPrompt,
-      tools,
+      tools: effectiveTools,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     let systemPromptText = systemPromptOverride();
@@ -1734,7 +1732,10 @@ export async function runEmbeddedAttempt(
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
       maxHoldMs: resolveSessionLockMaxHoldFromTimeout({
-        timeoutMs: params.timeoutMs,
+        timeoutMs: resolveRunTimeoutWithCompactionGraceMs({
+          runTimeoutMs: params.timeoutMs,
+          compactionTimeoutMs: resolveCompactionTimeoutMs(params.config),
+        }),
       }),
     });
 
@@ -1823,7 +1824,7 @@ export async function runEmbeddedAttempt(
       const hookRunner = getGlobalHookRunner();
 
       const { builtInTools, customTools } = splitSdkTools({
-        tools,
+        tools: effectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
       });
 
@@ -1896,16 +1897,6 @@ export async function runEmbeddedAttempt(
         workspaceDir: params.workspaceDir,
       });
       const anthropicPayloadLogger = createAnthropicPayloadLogger({
-        env: process.env,
-        runId: params.runId,
-        sessionId: activeSession.sessionId,
-        sessionKey: params.sessionKey,
-        provider: params.provider,
-        modelId: params.modelId,
-        modelApi: params.model.api,
-        workspaceDir: params.workspaceDir,
-      });
-      const aimlapiPayloadLogger = createAimlapiPayloadLogger({
         env: process.env,
         runId: params.runId,
         sessionId: activeSession.sessionId,
@@ -2099,56 +2090,6 @@ export async function runEmbeddedAttempt(
           activeSession.agent.streamFn,
         );
       }
-      if (params.provider === "aimlapi") {
-        const previousStreamFn = activeSession.agent.streamFn;
-        activeSession.agent.streamFn = (model, context, options) => {
-          if (context && typeof context === "object") {
-            const maybeMessages = (context as { messages?: unknown }).messages;
-            if (Array.isArray(maybeMessages)) {
-              const replacedCount = normalizeAimlapiAssistantNullContent({
-                provider: params.provider,
-                messages: maybeMessages as AgentMessage[],
-              }).replacedCount;
-              if (replacedCount > 0 && shouldLogAimlapiDiagnostics()) {
-                log.warn(
-                  "aimlapi stream guard: normalized null assistant content in stream context",
-                  {
-                    runId: params.runId,
-                    sessionId: params.sessionId,
-                    replacedCount,
-                  },
-                );
-              }
-            }
-          }
-          const nextOnPayload = (payload: unknown) => {
-            const normalized = normalizeAimlapiPayloadNullContent({
-              provider: params.provider,
-              payload,
-            });
-            if (normalized.replacedCount > 0 && shouldLogAimlapiDiagnostics()) {
-              log.warn(
-                "aimlapi stream guard: normalized null assistant content in outbound payload",
-                {
-                  runId: params.runId,
-                  sessionId: params.sessionId,
-                  replacedCount: normalized.replacedCount,
-                },
-              );
-            }
-            options?.onPayload?.(payload, model);
-          };
-          return previousStreamFn(model, context, {
-            ...options,
-            onPayload: nextOnPayload,
-          });
-        };
-      }
-      if (aimlapiPayloadLogger) {
-        activeSession.agent.streamFn = aimlapiPayloadLogger.wrapStreamFn(
-          activeSession.agent.streamFn,
-        );
-      }
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -2179,18 +2120,9 @@ export async function runEmbeddedAttempt(
         const limited = transcriptPolicy.repairToolUseResultPairing
           ? sanitizeToolUseResultPairing(truncated)
           : truncated;
-
-        const normalizedForAimlapi = normalizeAimlapiAssistantNullContent({
-          provider: params.provider,
-          messages: limited,
-        });
-
-        cacheTrace?.recordStage("session:limited", {
-          messages: normalizedForAimlapi.messages,
-        });
-
-        if (normalizedForAimlapi.messages.length > 0 || normalizedForAimlapi.replacedCount > 0) {
-          activeSession.agent.replaceMessages(normalizedForAimlapi.messages);
+        cacheTrace?.recordStage("session:limited", { messages: limited });
+        if (limited.length > 0) {
+          activeSession.agent.replaceMessages(limited);
         }
 
         if (params.contextEngine) {
@@ -2247,6 +2179,20 @@ export async function runEmbeddedAttempt(
         err.name = "AbortError";
         return err;
       };
+      const abortCompaction = () => {
+        if (!activeSession.isCompacting) {
+          return;
+        }
+        try {
+          activeSession.abortCompaction();
+        } catch (err) {
+          if (!isProbeSession) {
+            log.warn(
+              `embedded run abortCompaction failed: runId=${params.runId} sessionId=${params.sessionId} err=${String(err)}`,
+            );
+          }
+        }
+      };
       const abortRun = (isTimeout = false, reason?: unknown) => {
         aborted = true;
         if (isTimeout) {
@@ -2257,6 +2203,7 @@ export async function runEmbeddedAttempt(
         } else {
           runAbortController.abort(reason);
         }
+        abortCompaction();
         void activeSession.abort();
       };
       const abortable = <T>(promise: Promise<T>): Promise<T> => {
@@ -2337,38 +2284,63 @@ export async function runEmbeddedAttempt(
 
       let abortWarnTimer: NodeJS.Timeout | undefined;
       const isProbeSession = params.sessionId?.startsWith("probe-") ?? false;
-      const abortTimer = setTimeout(
-        () => {
-          if (!isProbeSession) {
-            log.warn(
-              `embedded run timeout: runId=${params.runId} sessionId=${params.sessionId} timeoutMs=${params.timeoutMs}`,
-            );
-          }
-          if (
-            shouldFlagCompactionTimeout({
-              isTimeout: true,
+      const compactionTimeoutMs = resolveCompactionTimeoutMs(params.config);
+      let abortTimer: NodeJS.Timeout | undefined;
+      let compactionGraceUsed = false;
+      const scheduleAbortTimer = (delayMs: number, reason: "initial" | "compaction-grace") => {
+        abortTimer = setTimeout(
+          () => {
+            const timeoutAction = resolveRunTimeoutDuringCompaction({
               isCompactionPendingOrRetrying: subscription.isCompacting(),
               isCompactionInFlight: activeSession.isCompacting,
-            })
-          ) {
-            timedOutDuringCompaction = true;
-          }
-          abortRun(true);
-          if (!abortWarnTimer) {
-            abortWarnTimer = setTimeout(() => {
-              if (!activeSession.isStreaming) {
-                return;
-              }
+              graceAlreadyUsed: compactionGraceUsed,
+            });
+            if (timeoutAction === "extend") {
+              compactionGraceUsed = true;
               if (!isProbeSession) {
                 log.warn(
-                  `embedded run abort still streaming: runId=${params.runId} sessionId=${params.sessionId}`,
+                  `embedded run timeout reached during compaction; extending deadline: ` +
+                    `runId=${params.runId} sessionId=${params.sessionId} extraMs=${compactionTimeoutMs}`,
                 );
               }
-            }, 10_000);
-          }
-        },
-        Math.max(1, params.timeoutMs),
-      );
+              scheduleAbortTimer(compactionTimeoutMs, "compaction-grace");
+              return;
+            }
+
+            if (!isProbeSession) {
+              log.warn(
+                reason === "compaction-grace"
+                  ? `embedded run timeout after compaction grace: runId=${params.runId} sessionId=${params.sessionId} timeoutMs=${params.timeoutMs} compactionGraceMs=${compactionTimeoutMs}`
+                  : `embedded run timeout: runId=${params.runId} sessionId=${params.sessionId} timeoutMs=${params.timeoutMs}`,
+              );
+            }
+            if (
+              shouldFlagCompactionTimeout({
+                isTimeout: true,
+                isCompactionPendingOrRetrying: subscription.isCompacting(),
+                isCompactionInFlight: activeSession.isCompacting,
+              })
+            ) {
+              timedOutDuringCompaction = true;
+            }
+            abortRun(true);
+            if (!abortWarnTimer) {
+              abortWarnTimer = setTimeout(() => {
+                if (!activeSession.isStreaming) {
+                  return;
+                }
+                if (!isProbeSession) {
+                  log.warn(
+                    `embedded run abort still streaming: runId=${params.runId} sessionId=${params.sessionId}`,
+                  );
+                }
+              }, 10_000);
+            }
+          },
+          Math.max(1, delayMs),
+        );
+      };
+      scheduleAbortTimer(params.timeoutMs, "initial");
 
       let messagesSnapshot: AgentMessage[] = [];
       let sessionIdUsed = activeSession.sessionId;
@@ -2407,7 +2379,13 @@ export async function runEmbeddedAttempt(
 
         // Run before_prompt_build hooks to allow plugins to inject prompt context.
         // Legacy compatibility: before_agent_start is also checked for context fields.
-        let effectivePrompt = params.prompt;
+        let effectivePrompt = prependBootstrapPromptWarning(
+          params.prompt,
+          bootstrapPromptWarning.lines,
+          {
+            preserveExactPrompt: heartbeatPrompt,
+          },
+        );
         const hookCtx = {
           agentId: hookAgentId,
           sessionKey: params.sessionKey,
@@ -2426,7 +2404,7 @@ export async function runEmbeddedAttempt(
         });
         {
           if (hookResult?.prependContext) {
-            effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;
+            effectivePrompt = `${hookResult.prependContext}\n\n${effectivePrompt}`;
             log.debug(
               `hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`,
             );
@@ -2475,6 +2453,8 @@ export async function runEmbeddedAttempt(
               `runId=${params.runId} sessionId=${params.sessionId}`,
           );
         }
+        const transcriptLeafId =
+          (sessionManager.getLeafEntry() as { id?: string } | null | undefined)?.id ?? null;
 
         try {
           // Idempotent cleanup for legacy sessions with persisted image payloads.
@@ -2553,22 +2533,15 @@ export async function runEmbeddedAttempt(
               });
           }
 
+          const btwSnapshotMessages = activeSession.messages.slice(-MAX_BTW_SNAPSHOT_MESSAGES);
+          updateActiveEmbeddedRunSnapshot(params.sessionId, {
+            transcriptLeafId,
+            messages: btwSnapshotMessages,
+            inFlightPrompt: effectivePrompt,
+          });
+
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
-          aimlapiPayloadLogger?.recordPromptStart({
-            prompt: effectivePrompt,
-            messageCount: activeSession.messages.length,
-            imageCount: imageResult.images.length,
-          });
-          log.info("embedded run: sending prompt to provider", {
-            runId: params.runId,
-            sessionId: params.sessionId,
-            provider: params.provider,
-            model: params.modelId,
-            promptChars: effectivePrompt.length,
-            messageCount: activeSession.messages.length,
-            imageCount: imageResult.images.length,
-          });
           if (imageResult.images.length > 0) {
             await abortable(activeSession.prompt(effectivePrompt, { images: imageResult.images }));
           } else {
@@ -2597,37 +2570,10 @@ export async function runEmbeddedAttempt(
           } else {
             promptError = err;
             promptErrorSource = "prompt";
-            aimlapiPayloadLogger?.recordPromptError(err);
-            if (params.provider === "aimlapi" && shouldLogAimlapiDiagnostics()) {
-              log.warn(
-                "aimlapi run attempt: prompt failed, evaluating invalid-tool-schema rollback",
-                {
-                  runId: params.runId,
-                  sessionId: params.sessionId,
-                  error: describeUnknownError(err).slice(0, 600),
-                },
-              );
-            }
-            rollbackFailedAimlapiPrompt({
-              provider: params.provider,
-              promptError,
-              sessionManager,
-              activeMessages: activeSession.messages,
-              runId: params.runId,
-              sessionId: params.sessionId,
-              replaceMessages: (messages) => activeSession.agent.replaceMessages(messages),
-            });
           }
         } finally {
-          const promptDurationMs = Date.now() - promptStartedAt;
-          aimlapiPayloadLogger?.recordPromptFinish({
-            durationMs: promptDurationMs,
-            messageCount: activeSession.messages.length,
-            aborted,
-            timedOut,
-          });
           log.debug(
-            `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${promptDurationMs}`,
+            `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
           );
         }
 
@@ -2809,7 +2755,6 @@ export async function runEmbeddedAttempt(
               : undefined,
         });
         anthropicPayloadLogger?.recordUsage(messagesSnapshot, promptError);
-        aimlapiPayloadLogger?.recordResponse(messagesSnapshot);
 
         // Run agent_end hooks to allow plugins to analyze the conversation
         // This is fire-and-forget, so we don't await
@@ -2945,6 +2890,7 @@ export async function runEmbeddedAttempt(
       });
       session?.dispose();
       releaseWsSession(params.sessionId);
+      await bundleMcpRuntime?.dispose();
       await sessionLock.release();
     }
   } finally {

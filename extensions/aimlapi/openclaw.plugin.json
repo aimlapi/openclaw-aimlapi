@@ -1,0 +1,27 @@
+{
+  "id": "aimlapi",
+  "providers": ["aimlapi"],
+  "providerAuthEnvVars": {
+    "aimlapi": ["AIMLAPI_API_KEY"]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "aimlapi",
+      "method": "api-key",
+      "choiceId": "aimlapi-api-key",
+      "choiceLabel": "AI/ML API key",
+      "groupId": "aimlapi",
+      "groupLabel": "AI/ML API",
+      "groupHint": "Supports 300+ models via a single API key",
+      "optionKey": "aimlapiApiKey",
+      "cliFlag": "--aimlapi-api-key",
+      "cliOption": "--aimlapi-api-key <key>",
+      "cliDescription": "AI/ML API key"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
