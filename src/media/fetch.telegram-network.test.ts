@@ -1,6 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveTelegramTransport, shouldRetryTelegramIpv4Fallback } from "../telegram/fetch.js";
-import { fetchRemoteMedia } from "./fetch.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const undiciMocks = vi.hoisted(() => {
   const createDispatcherCtor = <T extends Record<string, unknown> | string>() =>
@@ -23,8 +21,19 @@ vi.mock("undici", () => ({
   fetch: undiciMocks.fetch,
 }));
 
+let resolveTelegramTransport: typeof import("../../extensions/telegram/src/fetch.js").resolveTelegramTransport;
+let shouldRetryTelegramIpv4Fallback: typeof import("../../extensions/telegram/src/fetch.js").shouldRetryTelegramIpv4Fallback;
+let fetchRemoteMedia: typeof import("./fetch.js").fetchRemoteMedia;
+
 describe("fetchRemoteMedia telegram network policy", () => {
   type LookupFn = NonNullable<Parameters<typeof fetchRemoteMedia>[0]["lookupFn"]>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ resolveTelegramTransport, shouldRetryTelegramIpv4Fallback } =
+      await import("../../extensions/telegram/src/fetch.js"));
+    ({ fetchRemoteMedia } = await import("./fetch.js"));
+  });
 
   function createTelegramFetchFailedError(code: string): Error {
     return Object.assign(new TypeError("fetch failed"), {
@@ -90,7 +99,7 @@ describe("fetchRemoteMedia telegram network policy", () => {
   });
 
   it("keeps explicit proxy routing for file downloads", async () => {
-    const { makeProxyFetch } = await import("../telegram/proxy.js");
+    const { makeProxyFetch } = await import("../../extensions/telegram/src/proxy.js");
     const lookupFn = vi.fn(async () => [
       { address: "149.154.167.220", family: 4 },
     ]) as unknown as LookupFn;
