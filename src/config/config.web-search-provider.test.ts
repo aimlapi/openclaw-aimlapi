@@ -17,6 +17,11 @@ vi.mock("../plugins/web-search-providers.js", () => {
         getCredentialValue: (search?: Record<string, unknown>) => search?.apiKey,
       },
       {
+        id: "aimlapi",
+        envVars: ["AIMLAPI_API_KEY"],
+        getCredentialValue: getScoped("aimlapi"),
+      },
+      {
         id: "firecrawl",
         envVars: ["FIRECRAWL_API_KEY"],
         getCredentialValue: getScoped("firecrawl"),
@@ -57,6 +62,22 @@ describe("web search provider config", () => {
         providerConfig: {
           apiKey: "test-key", // pragma: allowlist secret
           baseUrl: "https://openrouter.ai/api/v1",
+          model: "perplexity/sonar-pro",
+        },
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+  });
+
+  it("accepts aimlapi provider and config", () => {
+    const res = validateConfigObject(
+      buildWebSearchProviderConfig({
+        enabled: true,
+        provider: "aimlapi",
+        providerConfig: {
+          apiKey: "aiml-test-key", // pragma: allowlist secret
+          baseUrl: "https://api.aimlapi.com/v1",
           model: "perplexity/sonar-pro",
         },
       }),
@@ -137,6 +158,7 @@ describe("web search provider auto-detection", () => {
 
   beforeEach(() => {
     delete process.env.BRAVE_API_KEY;
+    delete process.env.AIMLAPI_API_KEY;
     delete process.env.FIRECRAWL_API_KEY;
     delete process.env.GEMINI_API_KEY;
     delete process.env.KIMI_API_KEY;
@@ -160,6 +182,11 @@ describe("web search provider auto-detection", () => {
   it("auto-detects brave when only BRAVE_API_KEY is set", () => {
     process.env.BRAVE_API_KEY = "test-brave-key"; // pragma: allowlist secret
     expect(resolveSearchProvider({})).toBe("brave");
+  });
+
+  it("auto-detects aimlapi when only AIMLAPI_API_KEY is set", () => {
+    process.env.AIMLAPI_API_KEY = "aiml-test-key"; // pragma: allowlist secret
+    expect(resolveSearchProvider({})).toBe("aimlapi");
   });
 
   it("auto-detects gemini when only GEMINI_API_KEY is set", () => {
@@ -210,7 +237,15 @@ describe("web search provider auto-detection", () => {
     expect(resolveSearchProvider({})).toBe("brave");
   });
 
-  it("gemini wins over grok, kimi, and perplexity when brave unavailable", () => {
+  it("aimlapi wins over gemini, grok, kimi, and perplexity when brave unavailable", () => {
+    process.env.AIMLAPI_API_KEY = "aiml-test-key"; // pragma: allowlist secret
+    process.env.GEMINI_API_KEY = "test-gemini-key"; // pragma: allowlist secret
+    process.env.PERPLEXITY_API_KEY = "test-perplexity-key"; // pragma: allowlist secret
+    process.env.XAI_API_KEY = "test-xai-key"; // pragma: allowlist secret
+    expect(resolveSearchProvider({})).toBe("aimlapi");
+  });
+
+  it("gemini wins over grok, kimi, and perplexity when brave and aimlapi unavailable", () => {
     process.env.GEMINI_API_KEY = "test-gemini-key"; // pragma: allowlist secret
     process.env.PERPLEXITY_API_KEY = "test-perplexity-key"; // pragma: allowlist secret
     process.env.XAI_API_KEY = "test-xai-key"; // pragma: allowlist secret

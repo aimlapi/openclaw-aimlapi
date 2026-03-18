@@ -216,6 +216,9 @@ export const FIELD_LABELS: Record<string, string> = {
   "tools.message.broadcast.enabled": "Enable Message Broadcast",
   "tools.web.search.enabled": "Enable Web Search Tool",
   "tools.web.search.provider": "Web Search Provider",
+  "tools.web.search.aimlapi.apiKey": "AI/ML API Search API Key", // pragma: allowlist secret
+  "tools.web.search.aimlapi.baseUrl": "AI/ML API Search Base URL",
+  "tools.web.search.aimlapi.model": "AI/ML API Search Model",
   "tools.web.search.apiKey": "Brave Search API Key",
   "tools.web.search.maxResults": "Web Search Max Results",
   "tools.web.search.timeoutSeconds": "Web Search Timeout (sec)",

@@ -265,6 +265,7 @@ export const ToolsWebSearchSchema = z
     enabled: z.boolean().optional(),
     provider: z
       .union([
+        z.literal("aimlapi"),
         z.literal("brave"),
         z.literal("firecrawl"),
         z.literal("perplexity"),
@@ -272,6 +273,14 @@ export const ToolsWebSearchSchema = z
         z.literal("gemini"),
         z.literal("kimi"),
       ])
+      .optional(),
+    aimlapi: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        model: z.string().optional(),
+      })
+      .strict()
       .optional(),
     apiKey: SecretInputSchema.optional().register(sensitive),
     maxResults: z.number().int().positive().optional(),

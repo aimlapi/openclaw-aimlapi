@@ -1,7 +1,12 @@
+import type { StreamFn } from "@mariozechner/pi-agent-core";
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-auth";
 import { buildSingleProviderApiKeyCatalog } from "openclaw/plugin-sdk/provider-catalog";
-import type { StreamFn } from "@mariozechner/pi-agent-core";
+import {
+  createPluginBackedWebSearchProvider,
+  getScopedCredentialValue,
+  setScopedCredentialValue,
+} from "openclaw/plugin-sdk/provider-web-search";
 import { AIMLAPI_DEFAULT_MODEL_REF, applyAimlapiConfig } from "./onboard.js";
 import { buildAimlapiProvider } from "./provider-catalog.js";
 import {
@@ -82,5 +87,20 @@ export default definePluginEntry({
       isModernModelRef: () => true,
       wrapStreamFn: (ctx) => createAimlapiPayloadWrapper(ctx.streamFn),
     });
+    api.registerWebSearchProvider(
+      createPluginBackedWebSearchProvider({
+        id: "aimlapi",
+        label: "AI/ML API Search",
+        hint: "AIMLAPI web search via Perplexity Sonar-compatible models",
+        envVars: ["AIMLAPI_API_KEY"],
+        placeholder: "aiml-...",
+        signupUrl: "https://aimlapi.com",
+        docsUrl: "https://docs.openclaw.ai/tools/web",
+        autoDetectOrder: 15,
+        getCredentialValue: (searchConfig) => getScopedCredentialValue(searchConfig, "aimlapi"),
+        setCredentialValue: (searchConfigTarget, value) =>
+          setScopedCredentialValue(searchConfigTarget, "aimlapi", value),
+      }),
+    );
   },
 });

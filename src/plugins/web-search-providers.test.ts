@@ -16,6 +16,7 @@ describe("resolvePluginWebSearchProviders", () => {
 
     expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([
       "brave:brave",
+      "aimlapi:aimlapi",
       "google:gemini",
       "xai:grok",
       "moonshot:kimi",
@@ -36,6 +37,7 @@ describe("resolvePluginWebSearchProviders", () => {
 
     expect(providers.map((provider) => provider.pluginId)).toEqual([
       "brave",
+      "aimlapi",
       "google",
       "xai",
       "moonshot",

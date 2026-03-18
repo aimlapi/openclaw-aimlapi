@@ -1,5 +1,5 @@
 ---
-summary: "Web search + fetch tools (Brave, Firecrawl, Gemini, Grok, Kimi, and Perplexity providers)"
+summary: "Web search + fetch tools (AI/ML API, Brave, Firecrawl, Gemini, Grok, Kimi, and Perplexity providers)"
 read_when:
   - You want to enable web_search or web_fetch
   - You need provider API key setup
@@ -32,6 +32,7 @@ See [Brave Search setup](/brave-search) and [Perplexity Search setup](/perplexit
 
 | Provider                  | Result shape                       | Provider-specific filters                                    | Notes                                                                          | API key                                     |
 | ------------------------- | ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------- |
+| **AI/ML API**             | AI-synthesized answers + citations | `freshness`, date range, `domain_filter`                     | Best with `perplexity/sonar` or `perplexity/sonar-pro`                         | `AIMLAPI_API_KEY`                           |
 | **Brave Search API**      | Structured results with snippets   | `country`, `language`, `ui_lang`, time                       | Supports Brave `llm-context` mode                                              | `BRAVE_API_KEY`                             |
 | **Firecrawl Search**      | Structured results with snippets   | Use `firecrawl_search` for Firecrawl-specific search options | Best for pairing search with Firecrawl scraping/extraction                     | `FIRECRAWL_API_KEY`                         |
 | **Gemini**                | AI-synthesized answers + citations | —                                                            | Uses Google Search grounding                                                   | `GEMINI_API_KEY`                            |
@@ -52,6 +53,8 @@ The table above is alphabetical. If no `provider` is explicitly set, runtime aut
 
 If no keys are found, it falls back to Brave (you'll get a missing-key error prompting you to configure one).
 
+AI/ML API is also auto-detected when `AIMLAPI_API_KEY` or `tools.web.search.aimlapi.apiKey` is set. It currently slots between Brave and Gemini in runtime precedence.
+
 Runtime SecretRef behavior:
 
 - Web tool SecretRefs are resolved atomically at gateway startup/reload.
@@ -61,6 +64,14 @@ Runtime SecretRef behavior:
 ## Setting up web search
 
 Use `openclaw configure --section web` to set up your API key and choose a provider.
+
+### AI/ML API Search
+
+1. Create an account at [aimlapi.com](https://aimlapi.com)
+2. Generate an API key in the dashboard
+3. Run `openclaw configure --section web` to store the key in config, or set `AIMLAPI_API_KEY` in your environment.
+
+For the smoothest results, keep the default model (`perplexity/sonar-pro`) or use `perplexity/sonar`.
 
 ### Brave Search
 
@@ -88,6 +99,7 @@ See [Perplexity Search API Docs](https://docs.perplexity.ai/guides/search-quicks
 
 **Via config:** run `openclaw configure --section web`. It stores the key under the provider-specific config path:
 
+- AI/ML API: `tools.web.search.aimlapi.apiKey`
 - Brave: `tools.web.search.apiKey`
 - Firecrawl: `tools.web.search.firecrawl.apiKey`
 - Gemini: `tools.web.search.gemini.apiKey`
@@ -99,6 +111,7 @@ All of these fields also support SecretRef objects.
 
 **Via environment:** set provider env vars in the Gateway process environment:
 
+- AI/ML API: `AIMLAPI_API_KEY`
 - Brave: `BRAVE_API_KEY`
 - Firecrawl: `FIRECRAWL_API_KEY`
 - Gemini: `GEMINI_API_KEY`
@@ -109,6 +122,26 @@ All of these fields also support SecretRef objects.
 For a gateway install, put these in `~/.openclaw/.env` (or your service environment). See [Env vars](/help/faq#how-does-openclaw-load-environment-variables).
 
 ### Config examples
+
+**AI/ML API Search:**
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "aimlapi",
+        aimlapi: {
+          apiKey: "aiml-...", // optional if AIMLAPI_API_KEY is set
+          baseUrl: "https://api.aimlapi.com/v1",
+          model: "perplexity/sonar-pro",
+        },
+      },
+    },
+  },
+}
+```
 
 **Brave Search:**
 
@@ -266,6 +299,7 @@ Search the web using your configured provider.
 
 - `tools.web.search.enabled` must not be `false` (default: enabled)
 - API key for your chosen provider:
+  - **AI/ML API**: `AIMLAPI_API_KEY` or `tools.web.search.aimlapi.apiKey`
   - **Brave**: `BRAVE_API_KEY` or `tools.web.search.apiKey`
   - **Firecrawl**: `FIRECRAWL_API_KEY` or `tools.web.search.firecrawl.apiKey`
   - **Gemini**: `GEMINI_API_KEY` or `tools.web.search.gemini.apiKey`

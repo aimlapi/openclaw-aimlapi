@@ -667,7 +667,13 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
   "tools.web.search.provider":
-    'Search provider ("brave", "firecrawl", "gemini", "grok", "kimi", or "perplexity"). Auto-detected from available API keys if omitted.',
+    'Search provider ("aimlapi", "brave", "firecrawl", "gemini", "grok", "kimi", or "perplexity"). Auto-detected from available API keys if omitted.',
+  "tools.web.search.aimlapi.apiKey":
+    "AI/ML API key for web search (fallback: AIMLAPI_API_KEY env var).",
+  "tools.web.search.aimlapi.baseUrl":
+    'AI/ML API base URL override (default: "https://api.aimlapi.com/v1").',
+  "tools.web.search.aimlapi.model":
+    'AI/ML API search model override (default: "perplexity/sonar-pro").',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Number of results to return (1-10).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",

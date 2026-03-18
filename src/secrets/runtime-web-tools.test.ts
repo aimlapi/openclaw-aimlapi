@@ -5,7 +5,7 @@ import * as secretResolve from "./resolve.js";
 import { createResolverContext } from "./runtime-shared.js";
 import { resolveRuntimeWebTools } from "./runtime-web-tools.js";
 
-type ProviderUnderTest = "brave" | "gemini" | "grok" | "kimi" | "perplexity";
+type ProviderUnderTest = "aimlapi" | "brave" | "gemini" | "grok" | "kimi" | "perplexity";
 
 function asConfig(value: unknown): OpenClawConfig {
   return value as OpenClawConfig;
@@ -53,6 +53,9 @@ function createProviderSecretRefConfig(
 function readProviderKey(config: OpenClawConfig, provider: ProviderUnderTest): unknown {
   if (provider === "brave") {
     return config.tools?.web?.search?.apiKey;
+  }
+  if (provider === "aimlapi") {
+    return config.tools?.web?.search?.aimlapi?.apiKey;
   }
   if (provider === "gemini") {
     return config.tools?.web?.search?.gemini?.apiKey;
@@ -117,6 +120,11 @@ describe("runtime web tools resolution", () => {
 
   it.each([
     {
+      provider: "aimlapi" as const,
+      envRefId: "AIMLAPI_PROVIDER_REF",
+      resolvedKey: "aimlapi-provider-key",
+    },
+    {
       provider: "brave" as const,
       envRefId: "BRAVE_PROVIDER_REF",
       resolvedKey: "brave-provider-key",
@@ -172,6 +180,9 @@ describe("runtime web tools resolution", () => {
           web: {
             search: {
               apiKey: { source: "env", provider: "default", id: "BRAVE_REF" },
+              aimlapi: {
+                apiKey: { source: "env", provider: "default", id: "AIMLAPI_REF" },
+              },
               gemini: {
                 apiKey: { source: "env", provider: "default", id: "GEMINI_REF" },
               },
@@ -190,6 +201,7 @@ describe("runtime web tools resolution", () => {
       }),
       env: {
         BRAVE_REF: "brave-precedence-key",
+        AIMLAPI_REF: "aimlapi-precedence-key",
         GEMINI_REF: "gemini-precedence-key",
         GROK_REF: "grok-precedence-key",
         KIMI_REF: "kimi-precedence-key",
@@ -206,6 +218,7 @@ describe("runtime web tools resolution", () => {
         expect.objectContaining({ path: "tools.web.search.grok.apiKey" }),
         expect.objectContaining({ path: "tools.web.search.kimi.apiKey" }),
         expect.objectContaining({ path: "tools.web.search.perplexity.apiKey" }),
+        expect.objectContaining({ path: "tools.web.search.aimlapi.apiKey" }),
       ]),
     );
   });

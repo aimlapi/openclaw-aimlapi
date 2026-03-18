@@ -68,17 +68,41 @@ function createKimiSearchTool(kimiConfig?: { apiKey?: string; baseUrl?: string; 
   });
 }
 
-function createProviderSearchTool(provider: "brave" | "perplexity" | "grok" | "gemini" | "kimi") {
+function createAimlapiSearchTool(aimlapiConfig?: {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}) {
+  return createWebSearchTool({
+    config: {
+      tools: {
+        web: {
+          search: {
+            provider: "aimlapi",
+            ...(aimlapiConfig ? { aimlapi: aimlapiConfig } : {}),
+          },
+        },
+      },
+    },
+    sandboxed: true,
+  });
+}
+
+function createProviderSearchTool(
+  provider: "aimlapi" | "brave" | "perplexity" | "grok" | "gemini" | "kimi",
+) {
   const searchConfig =
-    provider === "perplexity"
-      ? { provider, perplexity: { apiKey: "pplx-config-test" } } // pragma: allowlist secret
-      : provider === "grok"
-        ? { provider, grok: { apiKey: "xai-config-test" } } // pragma: allowlist secret
-        : provider === "gemini"
-          ? { provider, gemini: { apiKey: "gemini-config-test" } } // pragma: allowlist secret
-          : provider === "kimi"
-            ? { provider, kimi: { apiKey: "moonshot-config-test" } } // pragma: allowlist secret
-            : { provider, apiKey: "brave-config-test" }; // pragma: allowlist secret
+    provider === "aimlapi"
+      ? { provider, aimlapi: { apiKey: "aiml-config-test" } } // pragma: allowlist secret
+      : provider === "perplexity"
+        ? { provider, perplexity: { apiKey: "pplx-config-test" } } // pragma: allowlist secret
+        : provider === "grok"
+          ? { provider, grok: { apiKey: "xai-config-test" } } // pragma: allowlist secret
+          : provider === "gemini"
+            ? { provider, gemini: { apiKey: "gemini-config-test" } } // pragma: allowlist secret
+            : provider === "kimi"
+              ? { provider, kimi: { apiKey: "moonshot-config-test" } } // pragma: allowlist secret
+              : { provider, apiKey: "brave-config-test" }; // pragma: allowlist secret
   return createWebSearchTool({
     config: {
       tools: {
@@ -123,8 +147,15 @@ function installPerplexityChatFetch(payload?: Record<string, unknown>) {
 }
 
 function createProviderSuccessPayload(
-  provider: "brave" | "perplexity" | "grok" | "gemini" | "kimi",
+  provider: "aimlapi" | "brave" | "perplexity" | "grok" | "gemini" | "kimi",
 ) {
+  if (provider === "aimlapi") {
+    return {
+      choices: [{ message: { content: "ok" } }],
+      citations: ["https://example.com"],
+      search_results: [],
+    };
+  }
   if (provider === "brave") {
     return { web: { results: [] } };
   }
@@ -305,7 +336,7 @@ describe("web_search provider proxy dispatch", () => {
     global.fetch = priorFetch;
   });
 
-  it.each(["brave", "perplexity", "grok", "gemini", "kimi"] as const)(
+  it.each(["aimlapi", "brave", "perplexity", "grok", "gemini", "kimi"] as const)(
     "uses proxy-aware dispatcher for %s provider when HTTP_PROXY is configured",
     async (provider) => {
       vi.stubEnv("HTTP_PROXY", "http://127.0.0.1:7890");
@@ -464,6 +495,58 @@ describe("web_search perplexity Search API", () => {
     expect(body.search_recency_filter).toBe("month");
     expect(body.search_domain_filter).toEqual(["nature.com", ".gov"]);
     expect(body.search_language_filter).toEqual(["en"]);
+  });
+});
+
+describe("web_search aimlapi provider", () => {
+  const priorFetch = global.fetch;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    global.fetch = priorFetch;
+    webSearchTesting.SEARCH_CACHE.clear();
+  });
+
+  it("returns a setup hint when AIMLAPI key is missing", async () => {
+    vi.stubEnv("AIMLAPI_API_KEY", "");
+    const tool = createAimlapiSearchTool();
+    const result = await tool?.execute?.("call-1", { query: "test" });
+
+    expect(result?.details).toMatchObject({ error: "missing_aimlapi_api_key" });
+  });
+
+  it("routes AIMLAPI search through chat completions and forwards web_search_options", async () => {
+    vi.stubEnv("AIMLAPI_API_KEY", "aiml-test-key"); // pragma: allowlist secret
+    const mockFetch = installMockFetch({
+      choices: [{ message: { content: "ok" } }],
+      citations: ["https://example.com"],
+      search_results: [{ title: "Example", url: "https://example.com", date: "2025-01-01" }],
+    });
+    const tool = createAimlapiSearchTool();
+    const result = await tool?.execute?.("call-1", {
+      query: "test",
+      freshness: "week",
+      domain_filter: ["example.com"],
+      date_after: "2025-01-01",
+      date_before: "2025-01-31",
+    });
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(mockFetch.mock.calls[0]?.[0]).toBe("https://api.aimlapi.com/v1/chat/completions");
+    const body = parseFirstRequestBody(mockFetch);
+    expect(body.model).toBe("perplexity/sonar-pro");
+    expect(body.web_search_options).toMatchObject({
+      search_recency_filter: "week",
+      search_domain_filter: ["example.com"],
+      search_after_date_filter: "1/1/2025",
+      search_before_date_filter: "1/31/2025",
+    });
+    expect(result?.details).toMatchObject({
+      provider: "aimlapi",
+      citations: ["https://example.com"],
+      content: expect.stringContaining("ok"),
+      searchResults: [{ title: "Example", url: "https://example.com", date: "2025-01-01" }],
+    });
   });
 });
 

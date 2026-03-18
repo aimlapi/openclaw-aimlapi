@@ -1,3 +1,4 @@
+import aimlapiPlugin from "../../../extensions/aimlapi/index.js";
 import anthropicPlugin from "../../../extensions/anthropic/index.js";
 import bravePlugin from "../../../extensions/brave/index.js";
 import elevenLabsPlugin from "../../../extensions/elevenlabs/index.js";
@@ -53,6 +54,7 @@ type PluginRegistrationContractEntry = {
 };
 
 const bundledWebSearchPlugins: Array<RegistrablePlugin & { credentialValue: unknown }> = [
+  { ...aimlapiPlugin, credentialValue: "aiml-test" },
   { ...bravePlugin, credentialValue: "BSA-test" },
   { ...firecrawlPlugin, credentialValue: "fc-test" },
   { ...googlePlugin, credentialValue: "AIza-test" },
