@@ -1,6 +1,7 @@
+import fs from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
+import { registerSingleProviderPlugin } from "../../test/helpers/extensions/plugin-registration.js";
 import aimlapiPlugin from "./index.js";
-import { registerSingleProviderPlugin } from "../../src/test-utils/plugin-registration.js";
 
 describe("AIMLAPI provider plugin", () => {
   it("normalizes tool schemas before sending the payload", async () => {
@@ -258,5 +259,75 @@ describe("AIMLAPI provider plugin", () => {
 
     expect(baseStreamFn).toHaveBeenCalledOnce();
     expect((payload.messages as Array<Record<string, unknown>>)[1]?.content).toBe("");
+  });
+
+  it("augments the model catalog from models.json without duplicating existing entries", async () => {
+    const provider = registerSingleProviderPlugin(aimlapiPlugin);
+    const augmentModelCatalog = provider.augmentModelCatalog;
+    expect(augmentModelCatalog).toBeTypeOf("function");
+
+    vi.spyOn(fs, "readFile").mockResolvedValue(
+      JSON.stringify({
+        providers: {
+          aimlapi: {
+            models: [
+              {
+                id: "openai/gpt-5-nano-2025-08-07",
+                name: "GPT-5 Nano",
+                reasoning: false,
+                input: ["text", "image"],
+                contextWindow: 128000,
+              },
+              {
+                id: "openai/gpt-4.1-mini",
+                name: "GPT-4.1 Mini",
+                reasoning: false,
+                input: ["text"],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const entries = await augmentModelCatalog?.({
+      agentDir: "/tmp/openclaw",
+      env: process.env,
+      entries: [
+        {
+          provider: "aimlapi",
+          id: "openai/gpt-5-nano-2025-08-07",
+          name: "GPT-5 Nano",
+        },
+      ],
+    });
+
+    expect(entries).toEqual([
+      {
+        provider: "aimlapi",
+        id: "openai/gpt-4.1-mini",
+        name: "GPT-4.1 Mini",
+        reasoning: false,
+        input: ["text"],
+      },
+    ]);
+  });
+
+  it("fails soft when the aimlapi catalog supplement is invalid", async () => {
+    const provider = registerSingleProviderPlugin(aimlapiPlugin);
+    const augmentModelCatalog = provider.augmentModelCatalog;
+    expect(augmentModelCatalog).toBeTypeOf("function");
+
+    vi.spyOn(fs, "readFile").mockResolvedValue("{invalid-json");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const entries = await augmentModelCatalog?.({
+      agentDir: "/tmp/openclaw",
+      env: process.env,
+      entries: [],
+    });
+
+    expect(entries).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
   });
 });

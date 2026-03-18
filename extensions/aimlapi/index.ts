@@ -7,6 +7,7 @@ import {
   getScopedCredentialValue,
   setScopedCredentialValue,
 } from "openclaw/plugin-sdk/provider-web-search";
+import { augmentAimlapiModelCatalog } from "./model-catalog.js";
 import { AIMLAPI_DEFAULT_MODEL_REF, applyAimlapiConfig } from "./onboard.js";
 import { buildAimlapiProvider } from "./provider-catalog.js";
 import {
@@ -84,6 +85,7 @@ export default definePluginEntry({
             buildProvider: buildAimlapiProvider,
           }),
       },
+      augmentModelCatalog: async (ctx) => await augmentAimlapiModelCatalog(ctx),
       isModernModelRef: () => true,
       wrapStreamFn: (ctx) => createAimlapiPayloadWrapper(ctx.streamFn),
     });

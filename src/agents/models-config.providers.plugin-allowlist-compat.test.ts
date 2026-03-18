@@ -6,6 +6,26 @@ import { captureEnv } from "../test-utils/env.js";
 import { resolveImplicitProvidersForTest } from "./models-config.e2e-harness.js";
 
 describe("implicit provider plugin allowlist compatibility", () => {
+  it("keeps bundled aimlapi implicit providers discoverable when plugins.allow is set", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "openclaw-test-"));
+    const envSnapshot = captureEnv(["AIMLAPI_API_KEY"]);
+    process.env.AIMLAPI_API_KEY = "test-aimlapi-key"; // pragma: allowlist secret
+
+    try {
+      const providers = await resolveImplicitProvidersForTest({
+        agentDir,
+        config: {
+          plugins: {
+            allow: ["openrouter"],
+          },
+        },
+      });
+      expect(providers?.aimlapi).toBeDefined();
+    } finally {
+      envSnapshot.restore();
+    }
+  });
+
   it("keeps bundled implicit providers discoverable when plugins.allow is set", async () => {
     const agentDir = mkdtempSync(join(tmpdir(), "openclaw-test-"));
     const envSnapshot = captureEnv(["KILOCODE_API_KEY", "MOONSHOT_API_KEY"]);
