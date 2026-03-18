@@ -113,9 +113,7 @@ export async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> 
         return AIMLAPI_STATIC_CATALOG;
       }
 
-      const models = list
-        .filter((model) => model.type === "chat-completion")
-        .map(mapAimlapiModel);
+      const models = list.filter((model) => model.type === "chat-completion").map(mapAimlapiModel);
       const discovered = models.length > 0 ? models : AIMLAPI_STATIC_CATALOG;
       discoveryCache = discovered;
       return discovered;

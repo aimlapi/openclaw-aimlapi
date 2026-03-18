@@ -7,7 +7,6 @@ import type { OpenClawConfig } from "../config/config.js";
 import { coerceSecretRef, resolveSecretInputRef } from "../config/types.secrets.js";
 import { isRecord } from "../utils.js";
 import { normalizeOptionalSecretInput } from "../utils/normalize-secret-input.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "./auth-profiles.js";
 import {
   AIMLAPI_BASE_URL,
   AIMLAPI_DEFAULT_CONTEXT_WINDOW,
@@ -16,6 +15,7 @@ import {
   AIMLAPI_DEFAULT_MODEL_ID,
   discoverAimlapiModels,
 } from "./aimlapi-models.js";
+import { ensureAuthProfileStore, listProfilesForProvider } from "./auth-profiles.js";
 import { discoverBedrockModels } from "./bedrock-discovery.js";
 import { normalizeGoogleModelId } from "./model-id-normalization.js";
 import { resolveOllamaApiBase } from "./models-config.providers.discovery.js";
@@ -42,6 +42,7 @@ import {
   resolvePluginDiscoveryProviders,
   runProviderCatalog,
 } from "../plugins/provider-discovery.js";
+import { resolvePluginProviders } from "../plugins/providers.js";
 import {
   isNonSecretApiKeyMarker,
   resolveNonEnvSecretRefApiKeyMarker,
@@ -679,11 +680,23 @@ function mergeImplicitProviderSet(
 }
 
 async function resolveImplicitAimlapiProvider(params: {
+  config?: OpenClawConfig;
   explicitProviders?: Record<string, ProviderConfig> | null;
   authStore: ReturnType<typeof ensureAuthProfileStore>;
   env: NodeJS.ProcessEnv;
 }): Promise<ProviderConfig | undefined> {
   if (params.explicitProviders?.aimlapi) {
+    return undefined;
+  }
+  const allowedAimlapiProviders = resolvePluginProviders({
+    config: params.config,
+    env: params.env,
+    onlyPluginIds: ["aimlapi"],
+    activate: false,
+    cache: false,
+    bundledProviderAllowlistCompat: true,
+  });
+  if (!allowedAimlapiProviders.some((provider) => provider.id === "aimlapi")) {
     return undefined;
   }
   const envVar = resolveEnvApiKeyVarName("aimlapi", params.env);
@@ -851,6 +864,7 @@ export async function resolveImplicitProviders(
 
   if (!providers.aimlapi) {
     const implicitAimlapi = await resolveImplicitAimlapiProvider({
+      config: params.config,
       explicitProviders: params.explicitProviders,
       authStore,
       env,

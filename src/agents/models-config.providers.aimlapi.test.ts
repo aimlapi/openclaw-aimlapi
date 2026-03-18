@@ -43,6 +43,40 @@ describe("AIMLAPI provider", () => {
     expect(Array.isArray(providers?.aimlapi?.models)).toBe(true);
   });
 
+  it("should not include aimlapi when plugins.deny blocks the plugin", async () => {
+    process.env.AIMLAPI_API_KEY = "test-aimlapi-key";
+
+    const providers = await resolveImplicitProviders({
+      agentDir: tempDir,
+      config: {
+        plugins: {
+          deny: ["aimlapi"],
+        },
+      },
+    });
+
+    expect(providers?.aimlapi).toBeUndefined();
+  });
+
+  it("should not include aimlapi when the plugin entry is disabled", async () => {
+    process.env.AIMLAPI_API_KEY = "test-aimlapi-key";
+
+    const providers = await resolveImplicitProviders({
+      agentDir: tempDir,
+      config: {
+        plugins: {
+          entries: {
+            aimlapi: {
+              enabled: false,
+            },
+          },
+        },
+      },
+    });
+
+    expect(providers?.aimlapi).toBeUndefined();
+  });
+
   it("should include aimlapi when auth profile is configured", async () => {
     const authProfilesPath = path.join(tempDir, "auth-profiles.json");
     await fs.writeFile(

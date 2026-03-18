@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   expectAugmentedCodexCatalog,
@@ -471,6 +472,8 @@ describe("provider-runtime", () => {
           entries: [
             { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
             { provider: "openai", id: "gpt-5.2-pro", name: "GPT-5.2 Pro" },
+            { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini" },
+            { provider: "openai", id: "gpt-5-nano", name: "GPT-5 nano" },
             { provider: "openai-codex", id: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
           ],
         },
@@ -478,6 +481,8 @@ describe("provider-runtime", () => {
     ).resolves.toEqual([
       { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
       { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
+      { provider: "openai", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
+      { provider: "openai", id: "gpt-5.4-nano", name: "gpt-5.4-nano" },
       { provider: "openai-codex", id: "gpt-5.4", name: "gpt-5.4" },
       {
         provider: "openai-codex",
@@ -487,5 +492,60 @@ describe("provider-runtime", () => {
     ]);
 
     expect(resolvePluginProvidersMock).not.toHaveBeenCalled();
+  });
+
+  it("loads owning bundled provider plugins for catalog augmentation when models.json declares provider models", async () => {
+    vi.spyOn(fs, "readFile").mockResolvedValue(
+      JSON.stringify({
+        providers: {
+          aimlapi: {
+            models: [{ id: "openai/gpt-5-nano-2025-08-07" }],
+          },
+        },
+      }),
+    );
+    resolveOwningPluginIdsForProviderMock.mockImplementation((params) =>
+      params.provider === "aimlapi" ? ["aimlapi"] : undefined,
+    );
+    resolvePluginProvidersMock.mockReturnValue([
+      {
+        id: "aimlapi",
+        label: "AI/ML API",
+        auth: [],
+        augmentModelCatalog: async () => [
+          {
+            provider: "aimlapi",
+            id: "openai/gpt-5-nano-2025-08-07",
+            name: "GPT-5 Nano",
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      augmentModelCatalogWithProviderPlugins({
+        env: process.env,
+        context: {
+          agentDir: "/tmp/openclaw",
+          env: process.env,
+          entries: [{ provider: "openai", id: "gpt-4.1", name: "GPT-4.1" }],
+        },
+      }),
+    ).resolves.toContainEqual({
+      provider: "aimlapi",
+      id: "openai/gpt-5-nano-2025-08-07",
+      name: "GPT-5 Nano",
+    });
+
+    expect(resolveOwningPluginIdsForProviderMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "aimlapi",
+      }),
+    );
+    expect(resolvePluginProvidersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onlyPluginIds: ["aimlapi"],
+      }),
+    );
   });
 });

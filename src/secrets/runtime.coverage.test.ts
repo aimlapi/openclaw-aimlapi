@@ -91,6 +91,9 @@ function buildConfigForOpenClawTarget(entry: SecretRegistryEntry, envId: string)
   if (entry.id === "tools.web.search.gemini.apiKey") {
     setPathCreateStrict(config, ["tools", "web", "search", "provider"], "gemini");
   }
+  if (entry.id === "tools.web.search.aimlapi.apiKey") {
+    setPathCreateStrict(config, ["tools", "web", "search", "provider"], "aimlapi");
+  }
   if (entry.id === "tools.web.search.grok.apiKey") {
     setPathCreateStrict(config, ["tools", "web", "search", "provider"], "grok");
   }

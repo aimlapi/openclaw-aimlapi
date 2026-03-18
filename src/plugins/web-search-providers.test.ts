@@ -16,12 +16,28 @@ describe("resolvePluginWebSearchProviders", () => {
 
     expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([
       "brave:brave",
+      "aimlapi:aimlapi",
       "google:gemini",
       "xai:grok",
       "moonshot:kimi",
       "perplexity:perplexity",
       "firecrawl:firecrawl",
     ]);
+    expect(providers.map((provider) => provider.credentialPath)).toEqual([
+      "plugins.entries.aimlapi.config.webSearch.apiKey",
+      "plugins.entries.brave.config.webSearch.apiKey",
+      "plugins.entries.google.config.webSearch.apiKey",
+      "plugins.entries.xai.config.webSearch.apiKey",
+      "plugins.entries.moonshot.config.webSearch.apiKey",
+      "plugins.entries.perplexity.config.webSearch.apiKey",
+      "plugins.entries.firecrawl.config.webSearch.apiKey",
+    ]);
+    expect(providers.find((provider) => provider.id === "firecrawl")?.applySelectionConfig).toEqual(
+      expect.any(Function),
+    );
+    expect(
+      providers.find((provider) => provider.id === "perplexity")?.resolveRuntimeMetadata,
+    ).toEqual(expect.any(Function));
   });
 
   it("can augment restrictive allowlists for bundled compatibility", () => {
@@ -36,6 +52,7 @@ describe("resolvePluginWebSearchProviders", () => {
 
     expect(providers.map((provider) => provider.pluginId)).toEqual([
       "brave",
+      "aimlapi",
       "google",
       "xai",
       "moonshot",
@@ -95,6 +112,7 @@ describe("resolvePluginWebSearchProviders", () => {
         placeholder: "custom-...",
         signupUrl: "https://example.com/signup",
         autoDetectOrder: 1,
+        credentialPath: "tools.web.search.custom.apiKey",
         getCredentialValue: () => "configured",
         setCredentialValue: () => {},
         createTool: () => ({

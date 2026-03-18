@@ -536,8 +536,6 @@ export async function runAgentTurnWithFallback(params: {
       const isSessionCorruption = /function call turn comes immediately after/i.test(message);
       const isRoleOrderingError = /incorrect role information|roles must alternate/i.test(message);
       const isTransientHttp = isTransientHttpError(message);
-      const channel = resolveMessageChannel(params.sessionCtx.Surface, params.sessionCtx.Provider);
-      const isTelegram = channel === "telegram";
       const failoverInfo = describeFailoverError(err);
       const isAuthFailure =
         failoverInfo.reason === "auth" ||
@@ -573,23 +571,14 @@ export async function runAgentTurnWithFallback(params: {
       }
 
       if (isAuthFailure && isAimlapiFailure) {
-        const guidanceText = isTelegram
-          ? [
-              // Placeholder for Telegram-specific instructions
-              // In future, we might provide Telegram-specific steps here.
-              "🔑 It looks like your AI/ML API key is missing or invalid.",
-              "Do you already have a key? If not, open https://aimlapi.com/app/keys/,",
-              "sign up/subscribe, then paste the key into the bot.",
-            ].join("\n")
-          : [
-              "🔑 It looks like your AI/ML API key is missing or invalid.",
-              "Do you already have a key? If not, open https://aimlapi.com/app/keys/,",
-              "sign up/subscribe, then paste the key into the bot.",
-            ].join("\n");
         return {
           kind: "final",
           payload: {
-            text: guidanceText,
+            text: [
+              "🔑 It looks like your AI/ML API key is missing or invalid.",
+              "Do you already have a key? If not, open https://aimlapi.com/app/keys/,",
+              "sign up/subscribe, then paste the key into the bot.",
+            ].join("\n"),
           },
         };
       }
