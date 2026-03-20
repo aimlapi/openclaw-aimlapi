@@ -167,4 +167,16 @@ describe("formatRawAssistantErrorForUi", () => {
     const result = formatAssistantErrorText(msg);
     expect(result).toContain("https://aimlapi.com/app/keys/");
   });
+
+  it("does not mislabel AIMLAPI permission failures as missing-key errors", () => {
+    const msg = {
+      stopReason: "error",
+      errorMessage: "HTTP 403 Forbidden from aimlapi: subscription required",
+      provider: "aimlapi",
+    } as AssistantMessage;
+    const result = formatAssistantErrorText(msg);
+
+    expect(result).not.toContain("https://aimlapi.com/app/keys/");
+    expect(result).toContain("HTTP 403");
+  });
 });

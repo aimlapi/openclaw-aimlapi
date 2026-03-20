@@ -116,6 +116,35 @@ function extractAimlapiCitations(data: AimlapiSearchResponse): string[] {
   return [...new Set(citations)];
 }
 
+function normalizeAimlapiDateFilter(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const match = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/.exec(trimmed);
+  if (!match?.groups) {
+    return trimmed;
+  }
+
+  const month = Number.parseInt(match.groups.month, 10);
+  const day = Number.parseInt(match.groups.day, 10);
+  const year = Number.parseInt(match.groups.year, 10);
+  if (
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(year) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return trimmed;
+  }
+
+  return `${month}/${day}/${year}`;
+}
+
 async function runAimlapiSearch(params: {
   query: string;
   apiKey: string;
@@ -147,8 +176,12 @@ async function runAimlapiSearch(params: {
           messages: [{ role: "user", content: params.query }],
           web_search_options: {
             ...(params.freshness ? { search_recency_filter: params.freshness } : {}),
-            ...(params.dateAfter ? { date_after: params.dateAfter } : {}),
-            ...(params.dateBefore ? { date_before: params.dateBefore } : {}),
+            ...(params.dateAfter
+              ? { search_after_date_filter: normalizeAimlapiDateFilter(params.dateAfter) }
+              : {}),
+            ...(params.dateBefore
+              ? { search_before_date_filter: normalizeAimlapiDateFilter(params.dateBefore) }
+              : {}),
             ...(params.domainFilter?.length ? { search_domain_filter: params.domainFilter } : {}),
           },
         }),

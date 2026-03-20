@@ -26,6 +26,24 @@ export {
 
 const log = createSubsystemLogger("errors");
 
+const AIMLAPI_EXPLICIT_CREDENTIAL_ERROR_PATTERNS: RegExp[] = [
+  /\b401\b/i,
+  /\binvalid[_ ]?api[_ ]?key\b/i,
+  /\bincorrect api key\b/i,
+  /\binvalid_api_key\b/i,
+  /\bno api key (?:found|resolved)\b/i,
+  /\bmissing (?:api key|credentials)\b/i,
+  /\bno credentials found\b/i,
+  /\bcould not (?:authenticate|validate).*(?:api[_ ]?key|credentials)\b/i,
+];
+
+export function isAimlapiCredentialErrorMessage(raw: string): boolean {
+  if (!raw) {
+    return false;
+  }
+  return AIMLAPI_EXPLICIT_CREDENTIAL_ERROR_PATTERNS.some((pattern) => pattern.test(raw));
+}
+
 export function formatBillingErrorMessage(provider?: string, model?: string): string {
   const providerName = provider?.trim();
   const modelName = model?.trim();
@@ -729,7 +747,7 @@ export function formatAssistantErrorText(
   const provider = msg.provider?.toLowerCase();
   const isAimlapiProvider = provider === "aimlapi" || raw.toLowerCase().includes("aimlapi");
 
-  if (isAimlapiProvider && isAuthErrorMessage(raw)) {
+  if (isAimlapiProvider && isAimlapiCredentialErrorMessage(raw)) {
     return (
       "🔑 It looks like your AI/ML API key is missing or invalid. " +
       "Do you already have a key? If not, open https://aimlapi.com/app/keys/, " +

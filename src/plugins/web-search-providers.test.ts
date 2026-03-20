@@ -9,6 +9,7 @@ import {
 
 const BUNDLED_WEB_SEARCH_PROVIDERS = [
   { pluginId: "brave", id: "brave", order: 10 },
+  { pluginId: "aimlapi", id: "aimlapi", order: 15 },
   { pluginId: "google", id: "gemini", order: 20 },
   { pluginId: "xai", id: "grok", order: 30 },
   { pluginId: "moonshot", id: "kimi", order: 40 },
@@ -98,8 +99,8 @@ describe("resolvePluginWebSearchProviders", () => {
       "firecrawl:firecrawl",
     ]);
     expect(providers.map((provider) => provider.credentialPath)).toEqual([
-      "plugins.entries.aimlapi.config.webSearch.apiKey",
       "plugins.entries.brave.config.webSearch.apiKey",
+      "plugins.entries.aimlapi.config.webSearch.apiKey",
       "plugins.entries.google.config.webSearch.apiKey",
       "plugins.entries.xai.config.webSearch.apiKey",
       "plugins.entries.moonshot.config.webSearch.apiKey",
