@@ -525,7 +525,6 @@ describe("web_search aimlapi provider", () => {
     const tool = createAimlapiSearchTool();
     const result = await tool?.execute?.("call-1", {
       query: "test",
-      freshness: "week",
       domain_filter: ["example.com"],
       date_after: "2025-01-01",
       date_before: "2025-01-31",
@@ -536,7 +535,6 @@ describe("web_search aimlapi provider", () => {
     const body = parseFirstRequestBody(mockFetch);
     expect(body.model).toBe("perplexity/sonar-pro");
     expect(body.web_search_options).toMatchObject({
-      search_recency_filter: "week",
       search_domain_filter: ["example.com"],
       search_after_date_filter: "1/1/2025",
       search_before_date_filter: "1/31/2025",
@@ -547,6 +545,32 @@ describe("web_search aimlapi provider", () => {
       content: expect.stringContaining("ok"),
       searchResults: [{ title: "Example", url: "https://example.com", date: "2025-01-01" }],
     });
+  });
+
+  it("rejects mixing freshness with explicit AIMLAPI date filters", async () => {
+    vi.stubEnv("AIMLAPI_API_KEY", "aiml-test-key"); // pragma: allowlist secret
+    const mockFetch = installMockFetch({
+      choices: [{ message: { content: "ok" } }],
+    });
+    const tool = createAimlapiSearchTool();
+    const result = await tool?.execute?.("call-1", {
+      query: "test",
+      freshness: "week",
+      date_after: "2025-01-01",
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result?.details).toMatchObject({ error: "conflicting_time_filters" });
+  });
+
+  it("keeps AIMLAPI domain_filter visible in the tool schema", () => {
+    const tool = createAimlapiSearchTool();
+    const properties = (tool?.parameters as { properties?: Record<string, unknown> } | undefined)
+      ?.properties;
+
+    expect(properties?.date_after).toBeDefined();
+    expect(properties?.date_before).toBeDefined();
+    expect(properties?.domain_filter).toBeDefined();
   });
 });
 

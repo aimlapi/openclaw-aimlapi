@@ -8,6 +8,7 @@ import { describeFailoverError, isFailoverError } from "../../agents/failover-er
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import {
+  isAimlapiCredentialErrorMessage,
   isAuthErrorMessage,
   BILLING_ERROR_USER_MESSAGE,
   isCompactionFailureError,
@@ -572,7 +573,7 @@ export async function runAgentTurnWithFallback(params: {
         }
       }
 
-      if (isAuthFailure && isAimlapiFailure) {
+      if (isAuthFailure && isAimlapiFailure && isAimlapiCredentialErrorMessage(message)) {
         return {
           kind: "final",
           payload: {

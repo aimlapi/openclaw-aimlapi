@@ -475,8 +475,6 @@ export type ToolsConfig = {
       timeoutSeconds?: number;
       /** Cache TTL in minutes for search results. */
       cacheTtlMinutes?: number;
-      /** @deprecated Legacy Brave credential path. */
-      apiKey?: SecretInput;
       /** @deprecated Legacy AIMLAPI scoped config. */
       aimlapi?: WebSearchLegacyProviderConfig;
       /** @deprecated Legacy Brave scoped config. */

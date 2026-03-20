@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   expectAugmentedCodexCatalog,
   expectCodexBuiltInSuppression,
@@ -66,8 +66,7 @@ const MODEL: ProviderRuntimeModel = {
 };
 
 describe("provider-runtime", () => {
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeAll(async () => {
     ({
       augmentModelCatalogWithProviderPlugins,
       buildProviderAuthDoctorHintWithPlugin,
@@ -92,6 +91,9 @@ describe("provider-runtime", () => {
       runProviderDynamicModel,
       wrapProviderStreamFn,
     } = await import("./provider-runtime.js"));
+  });
+
+  beforeEach(() => {
     resetProviderRuntimeHookCacheForTest();
     resolvePluginProvidersMock.mockReset();
     resolvePluginProvidersMock.mockReturnValue([]);

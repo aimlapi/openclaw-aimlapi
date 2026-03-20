@@ -17,6 +17,7 @@ export {
   formatRawAssistantErrorForUi,
   formatAssistantErrorText,
   getApiErrorPayloadFingerprint,
+  isAimlapiCredentialErrorMessage,
   isAuthAssistantError,
   isAuthErrorMessage,
   isAuthPermanentErrorMessage,
