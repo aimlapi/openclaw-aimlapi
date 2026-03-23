@@ -32,6 +32,7 @@ Scope intent:
 - `messages.tts.elevenlabs.apiKey`
 - `messages.tts.openai.apiKey`
 - `tools.web.fetch.firecrawl.apiKey`
+- `plugins.entries.aimlapi.config.webSearch.apiKey`
 - `plugins.entries.brave.config.webSearch.apiKey`
 - `plugins.entries.google.config.webSearch.apiKey`
 - `plugins.entries.xai.config.webSearch.apiKey`
@@ -39,6 +40,7 @@ Scope intent:
 - `plugins.entries.perplexity.config.webSearch.apiKey`
 - `plugins.entries.firecrawl.config.webSearch.apiKey`
 - `plugins.entries.tavily.config.webSearch.apiKey`
+- `tools.web.search.aimlapi.apiKey`
 - `tools.web.search.apiKey`
 - `tools.web.search.gemini.apiKey`
 - `tools.web.search.grok.apiKey`
