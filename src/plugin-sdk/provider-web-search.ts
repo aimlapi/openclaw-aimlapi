@@ -1,5 +1,6 @@
 // Public web-search registration helpers for provider plugins.
 
+export type { OpenClawConfig } from "../config/config.js";
 import type {
   WebSearchCredentialResolutionSource,
   WebSearchProviderPlugin,

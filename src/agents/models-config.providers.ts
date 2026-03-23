@@ -16,7 +16,6 @@ import {
 } from "../plugin-sdk/provider-catalog.js";
 import { isRecord } from "../utils.js";
 import { normalizeOptionalSecretInput } from "../utils/normalize-secret-input.js";
-import { hasAnthropicVertexAvailableAuth } from "./anthropic-vertex-provider.js";
 import {
   AIMLAPI_BASE_URL,
   AIMLAPI_DEFAULT_CONTEXT_WINDOW,
@@ -25,6 +24,7 @@ import {
   AIMLAPI_DEFAULT_MODEL_ID,
   discoverAimlapiModels,
 } from "./aimlapi-models.js";
+import { hasAnthropicVertexAvailableAuth } from "./anthropic-vertex-provider.js";
 import { ensureAuthProfileStore, listProfilesForProvider } from "./auth-profiles.js";
 import { discoverBedrockModels } from "./bedrock-discovery.js";
 import { normalizeGoogleModelId, normalizeXaiModelId } from "./model-id-normalization.js";

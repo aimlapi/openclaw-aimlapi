@@ -126,6 +126,78 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "aimlapi",
+    idHint: "aimlapi",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/aimlapi-provider",
+    packageVersion: "2026.3.14",
+    packageDescription: "OpenClaw AIMLAPI provider plugin",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "aimlapi",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          webSearch: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              apiKey: {
+                type: ["string", "object"],
+              },
+              baseUrl: {
+                type: "string",
+              },
+              model: {
+                type: "string",
+              },
+            },
+          },
+        },
+      },
+      providers: ["aimlapi"],
+      providerAuthEnvVars: {
+        aimlapi: ["AIMLAPI_API_KEY"],
+      },
+      providerAuthChoices: [
+        {
+          provider: "aimlapi",
+          method: "api-key",
+          choiceId: "aimlapi-api-key",
+          choiceLabel: "AI/ML API key",
+          groupId: "aimlapi",
+          groupLabel: "AI/ML API",
+          groupHint: "Supports 300+ models via a single API key",
+          optionKey: "aimlapiApiKey",
+          cliFlag: "--aimlapi-api-key",
+          cliOption: "--aimlapi-api-key <key>",
+          cliDescription: "AI/ML API key",
+        },
+      ],
+      uiHints: {
+        "webSearch.apiKey": {
+          label: "AI/ML API Search API Key",
+          help: "AI/ML API key for web search (fallback: AIMLAPI_API_KEY env var).",
+          sensitive: true,
+        },
+        "webSearch.baseUrl": {
+          label: "AI/ML API Search Base URL",
+          help: "AI/ML API base URL override for web search.",
+        },
+        "webSearch.model": {
+          label: "AI/ML API Search Model",
+          help: "AI/ML API model override for web search.",
+        },
+      },
+    },
+  },
+  {
     dirName: "amazon-bedrock",
     idHint: "amazon-bedrock",
     source: {

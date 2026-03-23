@@ -1,12 +1,12 @@
 // Public model/catalog helpers for provider plugins.
 
-import type { ModelDefinitionConfig } from "../config/types.models.js";
 import {
   AIMLAPI_DEFAULT_CONTEXT_WINDOW,
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
 } from "../agents/aimlapi-models.js";
+import type { ModelDefinitionConfig } from "../config/types.models.js";
 import {
   KILOCODE_DEFAULT_CONTEXT_WINDOW,
   KILOCODE_DEFAULT_COST,
