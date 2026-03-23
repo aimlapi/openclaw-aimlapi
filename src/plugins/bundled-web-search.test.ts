@@ -93,7 +93,9 @@ describe("bundled web search metadata", () => {
   });
 
   it("keeps bundled web search provider-to-plugin ids aligned with bundled contracts", () => {
+    expect(resolveBundledWebSearchPluginId("aimlapi")).toBe("aimlapi");
     expect(resolveBundledWebSearchPluginId("brave")).toBe("brave");
+    expect(resolveBundledWebSearchPluginId("duckduckgo")).toBe("duckduckgo");
     expect(resolveBundledWebSearchPluginId("exa")).toBe("exa");
     expect(resolveBundledWebSearchPluginId("firecrawl")).toBe("firecrawl");
     expect(resolveBundledWebSearchPluginId("gemini")).toBe("google");

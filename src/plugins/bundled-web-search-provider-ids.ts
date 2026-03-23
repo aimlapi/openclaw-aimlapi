@@ -1,6 +1,7 @@
 const BUNDLED_WEB_SEARCH_PROVIDER_PLUGIN_IDS = {
   aimlapi: "aimlapi",
   brave: "brave",
+  duckduckgo: "duckduckgo",
   exa: "exa",
   firecrawl: "firecrawl",
   gemini: "google",
