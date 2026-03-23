@@ -1,21 +1,17 @@
 import { Type } from "@sinclair/typebox";
+import type { OpenClawConfig } from "../../../src/config/config.js";
 import {
   buildSearchCacheKey,
-  DEFAULT_SEARCH_COUNT,
-  MAX_SEARCH_COUNT,
   readCachedSearchPayload,
   readConfiguredSecretString,
-  readNumberParam,
   readProviderEnvValue,
   readStringArrayParam,
   readStringParam,
   resolveSearchCacheTtlMs,
-  resolveSearchCount,
   resolveSearchTimeoutSeconds,
   resolveProviderWebSearchPluginConfig,
   setProviderWebSearchPluginConfigValue,
   setScopedCredentialValue,
-  type OpenClawConfig,
   type SearchConfigRecord,
   type WebSearchProviderPlugin,
   type WebSearchProviderToolDefinition,
@@ -60,13 +56,18 @@ function resolveAimlapiConfig(
   searchConfig?: SearchConfigRecord,
 ): AimlapiConfig {
   const pluginConfig = resolveProviderWebSearchPluginConfig(config, "aimlapi");
-  if (pluginConfig) {
-    return pluginConfig as AimlapiConfig;
-  }
   const scoped = (searchConfig as Record<string, unknown> | undefined)?.aimlapi;
-  return scoped && typeof scoped === "object" && !Array.isArray(scoped)
-    ? (scoped as AimlapiConfig)
-    : {};
+  const legacyConfig =
+    scoped && typeof scoped === "object" && !Array.isArray(scoped)
+      ? (scoped as AimlapiConfig)
+      : undefined;
+  if (!pluginConfig && !legacyConfig) {
+    return {};
+  }
+  return {
+    ...legacyConfig,
+    ...(pluginConfig as AimlapiConfig | undefined),
+  };
 }
 
 function resolveAimlapiApiKey(aimlapi?: AimlapiConfig): string | undefined {
@@ -210,13 +211,6 @@ async function runAimlapiSearch(params: {
 function createAimlapiSchema() {
   return Type.Object({
     query: Type.String({ description: "Search query string." }),
-    count: Type.Optional(
-      Type.Number({
-        description: "Number of results to return (1-10).",
-        minimum: 1,
-        maximum: MAX_SEARCH_COUNT,
-      }),
-    ),
     freshness: Type.Optional(
       Type.String({
         description: "Filter by time: 'day' (24h), 'week', 'month', or 'year'.",
@@ -263,10 +257,6 @@ function createAimlapiToolDefinition(
 
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
-      const count =
-        readNumberParam(params, "count", { integer: true }) ??
-        searchConfig?.maxResults ??
-        undefined;
       const freshness = readStringParam(params, "freshness");
       const dateAfter = readStringParam(params, "date_after");
       const dateBefore = readStringParam(params, "date_before");
@@ -299,7 +289,6 @@ function createAimlapiToolDefinition(
       const cacheKey = buildSearchCacheKey([
         "aimlapi",
         query,
-        resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         model,
         baseUrl,
         freshness,
@@ -380,6 +369,7 @@ export function createAimlapiWebSearchProvider(): WebSearchProviderPlugin {
 }
 
 export const __testing = {
+  resolveAimlapiConfig,
   resolveAimlapiApiKey,
   resolveAimlapiBaseUrl,
   resolveAimlapiModel,

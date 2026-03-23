@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AuthProfileCredential, OAuthCredential } from "../agents/auth-profiles/types.js";
 import { normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   augmentBundledProviderCatalog,
   resolveBundledProviderBuiltInModelSuppression,
@@ -10,8 +11,8 @@ import {
 import {
   resolveNonBundledProviderPluginIds,
   resolveOwningPluginIdsForProvider,
-  resolvePluginProviders,
 } from "./providers.js";
+import { resolvePluginProviders } from "./providers.runtime.js";
 import { resolvePluginCacheInputs } from "./roots.js";
 import type {
   ProviderAuthDoctorHintContext,
@@ -32,6 +33,8 @@ import type {
   ProviderThinkingPolicyContext,
   ProviderWrapStreamFnContext,
 } from "./types.js";
+
+const log = createSubsystemLogger("plugins-provider-runtime");
 
 function matchesProviderId(provider: ProviderPlugin, providerId: string): boolean {
   const normalized = normalizeProviderId(providerId);
@@ -91,7 +94,7 @@ function buildHookProviderCacheKey(params: {
   return `${roots.workspace ?? ""}::${roots.global}::${roots.stock ?? ""}::${JSON.stringify(params.onlyPluginIds ?? [])}`;
 }
 
-export function resetProviderRuntimeHookCacheForTest(): void {
+export function clearProviderRuntimeHookCache(): void {
   cachedHookProvidersWithoutConfig = new WeakMap<
     NodeJS.ProcessEnv,
     Map<string, ProviderPlugin[]>
@@ -100,6 +103,10 @@ export function resetProviderRuntimeHookCacheForTest(): void {
     OpenClawConfig,
     WeakMap<NodeJS.ProcessEnv, Map<string, ProviderPlugin[]>>
   >();
+}
+
+export function resetProviderRuntimeHookCacheForTest(): void {
+  clearProviderRuntimeHookCache();
 }
 
 function resolveProviderPluginsForHooks(params: {
@@ -171,6 +178,7 @@ async function resolveConfiguredModelProviderIds(agentDir?: string): Promise<str
     if (code === "ENOENT") {
       return [];
     }
+    log.warn(`Failed to read provider IDs from models.json: ${String(error)}`);
     return [];
   }
 }

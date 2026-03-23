@@ -1,12 +1,22 @@
-import {
-  QIANFAN_BASE_URL,
-  QIANFAN_DEFAULT_MODEL_ID,
-} from "../../extensions/qianfan/provider-catalog.js";
-import { XIAOMI_DEFAULT_MODEL_ID } from "../../extensions/xiaomi/provider-catalog.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { coerceSecretRef, resolveSecretInputRef } from "../config/types.secrets.js";
+import {
+  buildAnthropicVertexProvider,
+  buildKimiCodingProvider,
+  buildKilocodeProvider,
+  buildModelStudioProvider,
+  buildNvidiaProvider,
+  MODELSTUDIO_BASE_URL,
+  MODELSTUDIO_DEFAULT_MODEL_ID,
+  QIANFAN_BASE_URL,
+  QIANFAN_DEFAULT_MODEL_ID,
+  buildQianfanProvider,
+  XIAOMI_DEFAULT_MODEL_ID,
+  buildXiaomiProvider,
+} from "../plugin-sdk/provider-catalog.js";
 import { isRecord } from "../utils.js";
 import { normalizeOptionalSecretInput } from "../utils/normalize-secret-input.js";
+import { hasAnthropicVertexAvailableAuth } from "./anthropic-vertex-provider.js";
 import {
   AIMLAPI_BASE_URL,
   AIMLAPI_DEFAULT_CONTEXT_WINDOW,
@@ -17,32 +27,28 @@ import {
 } from "./aimlapi-models.js";
 import { ensureAuthProfileStore, listProfilesForProvider } from "./auth-profiles.js";
 import { discoverBedrockModels } from "./bedrock-discovery.js";
-import { normalizeGoogleModelId } from "./model-id-normalization.js";
+import { normalizeGoogleModelId, normalizeXaiModelId } from "./model-id-normalization.js";
 import { resolveOllamaApiBase } from "./models-config.providers.discovery.js";
-export { buildKimiCodingProvider } from "../../extensions/kimi-coding/provider-catalog.js";
-export { buildKilocodeProvider } from "../../extensions/kilocode/provider-catalog.js";
 export {
+  buildKimiCodingProvider,
+  buildKilocodeProvider,
   MODELSTUDIO_BASE_URL,
   MODELSTUDIO_DEFAULT_MODEL_ID,
   buildModelStudioProvider,
-} from "../../extensions/modelstudio/provider-catalog.js";
-export { buildNvidiaProvider } from "../../extensions/nvidia/provider-catalog.js";
-export {
+  buildNvidiaProvider,
   QIANFAN_BASE_URL,
   QIANFAN_DEFAULT_MODEL_ID,
   buildQianfanProvider,
-} from "../../extensions/qianfan/provider-catalog.js";
-export {
   XIAOMI_DEFAULT_MODEL_ID,
   buildXiaomiProvider,
-} from "../../extensions/xiaomi/provider-catalog.js";
+} from "../plugin-sdk/provider-catalog.js";
 import {
   groupPluginDiscoveryProvidersByOrder,
   normalizePluginDiscoveryResult,
   resolvePluginDiscoveryProviders,
   runProviderCatalog,
 } from "../plugins/provider-discovery.js";
-import { resolvePluginProviders } from "../plugins/providers.js";
+import { resolvePluginProviders } from "../plugins/providers.runtime.js";
 import {
   isNonSecretApiKeyMarker,
   resolveNonEnvSecretRefApiKeyMarker,
@@ -51,7 +57,7 @@ import {
 } from "./model-auth-markers.js";
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
 export { resolveOllamaApiBase } from "./models-config.providers.discovery.js";
-export { normalizeGoogleModelId };
+export { normalizeGoogleModelId, normalizeXaiModelId };
 
 type ModelsConfig = NonNullable<OpenClawConfig["models"]>;
 export type ProviderConfig = NonNullable<ModelsConfig["providers"]>[string];
@@ -584,7 +590,10 @@ export function normalizeProviders(params: {
         mutated = true;
         normalizedProvider = { ...normalizedProvider, apiKey };
       } else {
-        const fromEnv = resolveEnvApiKeyVarName(normalizedKey, env);
+        const fromEnv =
+          normalizedKey === "anthropic-vertex"
+            ? resolveEnvApiKey(normalizedKey, env)?.apiKey
+            : resolveEnvApiKeyVarName(normalizedKey, env);
         const apiKey = fromEnv ?? profileApiKey?.apiKey;
         if (apiKey?.trim()) {
           if (profileApiKey && profileApiKey.source !== "plaintext") {
@@ -679,6 +688,24 @@ function mergeImplicitProviderSet(
   }
 }
 
+function isBundledImplicitProviderAllowed(params: {
+  provider: string;
+  config?: OpenClawConfig;
+  env: NodeJS.ProcessEnv;
+}): boolean {
+  // Keep bundled implicit-provider discovery compatible with plugins.allow,
+  // but still honor explicit deny/disabled config for the owning plugin.
+  const allowedProviders = resolvePluginProviders({
+    config: params.config,
+    env: params.env,
+    onlyPluginIds: [params.provider],
+    activate: false,
+    cache: false,
+    bundledProviderAllowlistCompat: true,
+  });
+  return allowedProviders.some((provider) => provider.id === params.provider);
+}
+
 async function resolveImplicitAimlapiProvider(params: {
   config?: OpenClawConfig;
   explicitProviders?: Record<string, ProviderConfig> | null;
@@ -688,15 +715,13 @@ async function resolveImplicitAimlapiProvider(params: {
   if (params.explicitProviders?.aimlapi) {
     return undefined;
   }
-  const allowedAimlapiProviders = resolvePluginProviders({
-    config: params.config,
-    env: params.env,
-    onlyPluginIds: ["aimlapi"],
-    activate: false,
-    cache: false,
-    bundledProviderAllowlistCompat: true,
-  });
-  if (!allowedAimlapiProviders.some((provider) => provider.id === "aimlapi")) {
+  if (
+    !isBundledImplicitProviderAllowed({
+      provider: "aimlapi",
+      config: params.config,
+      env: params.env,
+    })
+  ) {
     return undefined;
   }
   const envVar = resolveEnvApiKeyVarName("aimlapi", params.env);
@@ -862,16 +887,24 @@ export async function resolveImplicitProviders(
   mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "paired"));
   mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "late"));
 
-  if (!providers.aimlapi) {
-    const implicitAimlapi = await resolveImplicitAimlapiProvider({
-      config: params.config,
-      explicitProviders: params.explicitProviders,
-      authStore,
-      env,
-    });
-    if (implicitAimlapi) {
-      providers.aimlapi = implicitAimlapi;
-    }
+  const implicitAimlapi = await resolveImplicitAimlapiProvider({
+    config: params.config,
+    explicitProviders: params.explicitProviders,
+    authStore,
+    env,
+  });
+  if (implicitAimlapi) {
+    const existing = providers.aimlapi;
+    providers.aimlapi = existing
+      ? {
+          ...implicitAimlapi,
+          ...existing,
+          models:
+            Array.isArray(existing.models) && existing.models.length > 0
+              ? existing.models
+              : implicitAimlapi.models,
+        }
+      : implicitAimlapi;
   }
 
   const implicitBedrock = await resolveImplicitBedrockProvider({
@@ -893,9 +926,34 @@ export async function resolveImplicitProviders(
       : implicitBedrock;
   }
 
+  const implicitAnthropicVertex = resolveImplicitAnthropicVertexProvider({ env });
+  if (implicitAnthropicVertex) {
+    const existing = providers["anthropic-vertex"];
+    providers["anthropic-vertex"] = existing
+      ? {
+          ...implicitAnthropicVertex,
+          ...existing,
+          models:
+            Array.isArray(existing.models) && existing.models.length > 0
+              ? existing.models
+              : implicitAnthropicVertex.models,
+        }
+      : implicitAnthropicVertex;
+  }
+
   return providers;
 }
 
+export function resolveImplicitAnthropicVertexProvider(params: {
+  env?: NodeJS.ProcessEnv;
+}): ProviderConfig | null {
+  const env = params.env ?? process.env;
+  if (!hasAnthropicVertexAvailableAuth(env)) {
+    return null;
+  }
+
+  return buildAnthropicVertexProvider({ env });
+}
 export async function resolveImplicitBedrockProvider(params: {
   agentDir: string;
   config?: OpenClawConfig;
