@@ -1,16 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import {
   buildSearchCacheKey,
-  DEFAULT_SEARCH_COUNT,
-  MAX_SEARCH_COUNT,
   readCachedSearchPayload,
   readConfiguredSecretString,
-  readNumberParam,
   readProviderEnvValue,
   readStringArrayParam,
   readStringParam,
   resolveSearchCacheTtlMs,
-  resolveSearchCount,
   resolveSearchTimeoutSeconds,
   resolveProviderWebSearchPluginConfig,
   setProviderWebSearchPluginConfigValue,
@@ -215,13 +211,6 @@ async function runAimlapiSearch(params: {
 function createAimlapiSchema() {
   return Type.Object({
     query: Type.String({ description: "Search query string." }),
-    count: Type.Optional(
-      Type.Number({
-        description: "Number of results to return (1-10).",
-        minimum: 1,
-        maximum: MAX_SEARCH_COUNT,
-      }),
-    ),
     freshness: Type.Optional(
       Type.String({
         description: "Filter by time: 'day' (24h), 'week', 'month', or 'year'.",
@@ -268,10 +257,6 @@ function createAimlapiToolDefinition(
 
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
-      const count =
-        readNumberParam(params, "count", { integer: true }) ??
-        searchConfig?.maxResults ??
-        undefined;
       const freshness = readStringParam(params, "freshness");
       const dateAfter = readStringParam(params, "date_after");
       const dateBefore = readStringParam(params, "date_before");
@@ -304,7 +289,6 @@ function createAimlapiToolDefinition(
       const cacheKey = buildSearchCacheKey([
         "aimlapi",
         query,
-        resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         model,
         baseUrl,
         freshness,

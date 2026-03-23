@@ -70,18 +70,13 @@ export const AIMLAPI_DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-nano-2025-08-07";
 
 export function buildAimlapiModelDefinition(): ModelDefinitionConfig {
   return {
-    id: "openai/gpt-5-nano-2025-08-07",
+    id: AIMLAPI_DEFAULT_MODEL_ID,
     name: "GPT-5 Nano (2025-08-07)",
     reasoning: false,
     input: ["text", "image"],
-    cost: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-    },
-    contextWindow: 128000,
-    maxTokens: 16384,
+    cost: AIMLAPI_DEFAULT_COST,
+    contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
   };
 }
 

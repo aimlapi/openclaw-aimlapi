@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AuthProfileCredential, OAuthCredential } from "../agents/auth-profiles/types.js";
 import { normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   augmentBundledProviderCatalog,
   resolveBundledProviderBuiltInModelSuppression,
@@ -32,6 +33,8 @@ import type {
   ProviderThinkingPolicyContext,
   ProviderWrapStreamFnContext,
 } from "./types.js";
+
+const log = createSubsystemLogger("plugins-provider-runtime");
 
 function matchesProviderId(provider: ProviderPlugin, providerId: string): boolean {
   const normalized = normalizeProviderId(providerId);
@@ -175,6 +178,7 @@ async function resolveConfiguredModelProviderIds(agentDir?: string): Promise<str
     if (code === "ENOENT") {
       return [];
     }
+    log.warn(`Failed to read provider IDs from models.json: ${String(error)}`);
     return [];
   }
 }
