@@ -2,27 +2,31 @@ import { describe, expect, it } from "vitest";
 import { resolveBundledPluginWebSearchProviders } from "./web-search-providers.js";
 
 describe("resolveBundledPluginWebSearchProviders", () => {
-  it("returns bundled providers in auto-detect order", () => {
+  it("returns bundled providers in alphabetical order", () => {
     const providers = resolveBundledPluginWebSearchProviders({});
 
     expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([
-      "brave:brave",
       "aimlapi:aimlapi",
+      "brave:brave",
+      "duckduckgo:duckduckgo",
+      "exa:exa",
+      "firecrawl:firecrawl",
       "google:gemini",
       "xai:grok",
       "moonshot:kimi",
       "perplexity:perplexity",
-      "firecrawl:firecrawl",
       "tavily:tavily",
     ]);
     expect(providers.map((provider) => provider.credentialPath)).toEqual([
-      "plugins.entries.brave.config.webSearch.apiKey",
       "plugins.entries.aimlapi.config.webSearch.apiKey",
+      "plugins.entries.brave.config.webSearch.apiKey",
+      "",
+      "plugins.entries.exa.config.webSearch.apiKey",
+      "plugins.entries.firecrawl.config.webSearch.apiKey",
       "plugins.entries.google.config.webSearch.apiKey",
       "plugins.entries.xai.config.webSearch.apiKey",
       "plugins.entries.moonshot.config.webSearch.apiKey",
       "plugins.entries.perplexity.config.webSearch.apiKey",
-      "plugins.entries.firecrawl.config.webSearch.apiKey",
       "plugins.entries.tavily.config.webSearch.apiKey",
     ]);
     expect(providers.find((provider) => provider.id === "firecrawl")?.applySelectionConfig).toEqual(
@@ -44,13 +48,15 @@ describe("resolveBundledPluginWebSearchProviders", () => {
     });
 
     expect(providers.map((provider) => provider.pluginId)).toEqual([
-      "brave",
       "aimlapi",
+      "brave",
+      "duckduckgo",
+      "exa",
+      "firecrawl",
       "google",
       "xai",
       "moonshot",
       "perplexity",
-      "firecrawl",
       "tavily",
     ]);
   });
@@ -99,13 +105,15 @@ describe("resolveBundledPluginWebSearchProviders", () => {
     });
 
     expect(providers.map((provider) => `${provider.pluginId}:${provider.id}`)).toEqual([
-      "brave:brave",
       "aimlapi:aimlapi",
+      "brave:brave",
+      "duckduckgo:duckduckgo",
+      "exa:exa",
+      "firecrawl:firecrawl",
       "google:gemini",
       "xai:grok",
       "moonshot:kimi",
       "perplexity:perplexity",
-      "firecrawl:firecrawl",
       "tavily:tavily",
     ]);
   });
