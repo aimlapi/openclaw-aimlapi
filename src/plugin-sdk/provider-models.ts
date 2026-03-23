@@ -5,6 +5,7 @@ import {
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_DEFAULT_MODEL_NAME,
 } from "../agents/aimlapi-models.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
 import {
@@ -69,6 +70,7 @@ export {
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_DEFAULT_MODEL_NAME,
   AIMLAPI_STATIC_CATALOG,
   discoverAimlapiModels,
 } from "../agents/aimlapi-models.js";
@@ -77,7 +79,7 @@ export const AIMLAPI_DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-nano-2025-08-07";
 export function buildAimlapiModelDefinition(): ModelDefinitionConfig {
   return {
     id: AIMLAPI_DEFAULT_MODEL_ID,
-    name: "GPT-5 Nano (2025-08-07)",
+    name: AIMLAPI_DEFAULT_MODEL_NAME,
     reasoning: false,
     input: ["text", "image"],
     cost: AIMLAPI_DEFAULT_COST,

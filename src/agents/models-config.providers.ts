@@ -22,6 +22,7 @@ import {
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_DEFAULT_MODEL_NAME,
   discoverAimlapiModels,
 } from "./aimlapi-models.js";
 import { hasAnthropicVertexAvailableAuth } from "./anthropic-vertex-provider.js";
@@ -83,7 +84,7 @@ export { AIMLAPI_BASE_URL, AIMLAPI_DEFAULT_MODEL_ID };
 export function buildAimlapiModelDefinition() {
   return {
     id: AIMLAPI_DEFAULT_MODEL_ID,
-    name: "GPT-5 Nano (2025-08-07)",
+    name: AIMLAPI_DEFAULT_MODEL_NAME,
     reasoning: false,
     input: ["text", "image"] as Array<"text" | "image">,
     cost: AIMLAPI_DEFAULT_COST,
