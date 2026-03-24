@@ -1,4 +1,4 @@
-import type { AnyAgentTool } from "openclaw/plugin-sdk";
+import type { AnyAgentTool } from "./api.js";
 
 const AIMLAPI_UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
   "anyOf",

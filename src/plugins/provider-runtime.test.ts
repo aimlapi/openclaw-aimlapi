@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   expectAugmentedCodexCatalog,
   expectCodexBuiltInSuppression,
