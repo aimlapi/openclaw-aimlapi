@@ -5,6 +5,7 @@ const log = createSubsystemLogger("aimlapi-models");
 
 export const AIMLAPI_BASE_URL = "https://api.aimlapi.com/v1";
 export const AIMLAPI_DEFAULT_MODEL_ID = "openai/gpt-5-nano-2025-08-07";
+export const AIMLAPI_DEFAULT_MODEL_NAME = "GPT-5 Nano (2025-08-07)";
 export const AIMLAPI_DEFAULT_CONTEXT_WINDOW = 128000;
 export const AIMLAPI_DEFAULT_MAX_TOKENS = 16384;
 export const AIMLAPI_DEFAULT_COST = {
@@ -14,7 +15,20 @@ export const AIMLAPI_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
+export function buildAimlapiDefaultModelDefinition(): ModelDefinitionConfig {
+  return {
+    id: AIMLAPI_DEFAULT_MODEL_ID,
+    name: AIMLAPI_DEFAULT_MODEL_NAME,
+    reasoning: false,
+    input: ["text", "image"],
+    cost: AIMLAPI_DEFAULT_COST,
+    contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
+  };
+}
+
 export const AIMLAPI_STATIC_CATALOG: ModelDefinitionConfig[] = [
+  buildAimlapiDefaultModelDefinition(),
   {
     id: "openai/gpt-4o",
     name: "GPT 4o",

@@ -18,13 +18,23 @@ vi.mock("../plugins/web-search-providers.js", () => {
     resolveBundledPluginWebSearchProviders: () => [
       {
         id: "brave",
+        autoDetectOrder: 10,
         envVars: ["BRAVE_API_KEY"],
         credentialPath: "plugins.entries.brave.config.webSearch.apiKey",
         getCredentialValue: (search?: Record<string, unknown>) => search?.apiKey,
         getConfiguredCredentialValue: getConfigured("brave"),
       },
       {
+        id: "aimlapi",
+        autoDetectOrder: 15,
+        envVars: ["AIMLAPI_API_KEY"],
+        credentialPath: "plugins.entries.aimlapi.config.webSearch.apiKey",
+        getCredentialValue: getScoped("aimlapi"),
+        getConfiguredCredentialValue: getConfigured("aimlapi"),
+      },
+      {
         id: "firecrawl",
+        autoDetectOrder: 60,
         envVars: ["FIRECRAWL_API_KEY"],
         credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
         getCredentialValue: getScoped("firecrawl"),
@@ -32,6 +42,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "gemini",
+        autoDetectOrder: 20,
         envVars: ["GEMINI_API_KEY"],
         credentialPath: "plugins.entries.google.config.webSearch.apiKey",
         getCredentialValue: getScoped("gemini"),
@@ -39,6 +50,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "grok",
+        autoDetectOrder: 30,
         envVars: ["XAI_API_KEY"],
         credentialPath: "plugins.entries.xai.config.webSearch.apiKey",
         getCredentialValue: getScoped("grok"),
@@ -46,6 +58,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "kimi",
+        autoDetectOrder: 40,
         envVars: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
         credentialPath: "plugins.entries.moonshot.config.webSearch.apiKey",
         getCredentialValue: getScoped("kimi"),
@@ -53,6 +66,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "perplexity",
+        autoDetectOrder: 50,
         envVars: ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"],
         credentialPath: "plugins.entries.perplexity.config.webSearch.apiKey",
         getCredentialValue: getScoped("perplexity"),
@@ -60,6 +74,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "tavily",
+        autoDetectOrder: 70,
         envVars: ["TAVILY_API_KEY"],
         credentialPath: "plugins.entries.tavily.config.webSearch.apiKey",
         getCredentialValue: getScoped("tavily"),
@@ -69,6 +84,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
     resolvePluginWebSearchProviders: () => [
       {
         id: "brave",
+        autoDetectOrder: 10,
         envVars: ["BRAVE_API_KEY"],
         credentialPath: "plugins.entries.brave.config.webSearch.apiKey",
         getCredentialValue: (search?: Record<string, unknown>) => search?.apiKey,
@@ -76,6 +92,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "aimlapi",
+        autoDetectOrder: 15,
         envVars: ["AIMLAPI_API_KEY"],
         credentialPath: "plugins.entries.aimlapi.config.webSearch.apiKey",
         getCredentialValue: getScoped("aimlapi"),
@@ -83,6 +100,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "firecrawl",
+        autoDetectOrder: 60,
         envVars: ["FIRECRAWL_API_KEY"],
         credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
         getCredentialValue: getScoped("firecrawl"),
@@ -90,6 +108,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "gemini",
+        autoDetectOrder: 20,
         envVars: ["GEMINI_API_KEY"],
         credentialPath: "plugins.entries.google.config.webSearch.apiKey",
         getCredentialValue: getScoped("gemini"),
@@ -97,6 +116,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "grok",
+        autoDetectOrder: 30,
         envVars: ["XAI_API_KEY"],
         credentialPath: "plugins.entries.xai.config.webSearch.apiKey",
         getCredentialValue: getScoped("grok"),
@@ -104,6 +124,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "kimi",
+        autoDetectOrder: 40,
         envVars: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
         credentialPath: "plugins.entries.moonshot.config.webSearch.apiKey",
         getCredentialValue: getScoped("kimi"),
@@ -111,6 +132,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "perplexity",
+        autoDetectOrder: 50,
         envVars: ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"],
         credentialPath: "plugins.entries.perplexity.config.webSearch.apiKey",
         getCredentialValue: getScoped("perplexity"),
@@ -118,6 +140,7 @@ vi.mock("../plugins/web-search-providers.js", () => {
       },
       {
         id: "tavily",
+        autoDetectOrder: 70,
         envVars: ["TAVILY_API_KEY"],
         credentialPath: "plugins.entries.tavily.config.webSearch.apiKey",
         getCredentialValue: getScoped("tavily"),

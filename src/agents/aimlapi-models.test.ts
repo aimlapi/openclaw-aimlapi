@@ -36,6 +36,13 @@ describe("discoverAimlapiModels", () => {
 
     expect(first).toEqual(module.AIMLAPI_STATIC_CATALOG);
     expect(second).toEqual(module.AIMLAPI_STATIC_CATALOG);
+    expect(first).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: module.AIMLAPI_DEFAULT_MODEL_ID,
+        }),
+      ]),
+    );
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

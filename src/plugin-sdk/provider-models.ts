@@ -1,12 +1,13 @@
 // Public model/catalog helpers for provider plugins.
 
-import type { ModelDefinitionConfig } from "../config/types.models.js";
 import {
   AIMLAPI_DEFAULT_CONTEXT_WINDOW,
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_DEFAULT_MODEL_NAME,
 } from "../agents/aimlapi-models.js";
+import type { ModelDefinitionConfig } from "../config/types.models.js";
 import {
   KILOCODE_DEFAULT_CONTEXT_WINDOW,
   KILOCODE_DEFAULT_COST,
@@ -69,6 +70,7 @@ export {
   AIMLAPI_DEFAULT_COST,
   AIMLAPI_DEFAULT_MAX_TOKENS,
   AIMLAPI_DEFAULT_MODEL_ID,
+  AIMLAPI_DEFAULT_MODEL_NAME,
   AIMLAPI_STATIC_CATALOG,
   discoverAimlapiModels,
 } from "../agents/aimlapi-models.js";
@@ -77,7 +79,7 @@ export const AIMLAPI_DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-nano-2025-08-07";
 export function buildAimlapiModelDefinition(): ModelDefinitionConfig {
   return {
     id: AIMLAPI_DEFAULT_MODEL_ID,
-    name: "GPT-5 Nano (2025-08-07)",
+    name: AIMLAPI_DEFAULT_MODEL_NAME,
     reasoning: false,
     input: ["text", "image"],
     cost: AIMLAPI_DEFAULT_COST,
@@ -114,6 +116,11 @@ export {
   SYNTHETIC_DEFAULT_MODEL_REF,
   SYNTHETIC_MODEL_CATALOG,
 } from "../agents/synthetic-models.js";
+export {
+  buildDeepSeekModelDefinition,
+  DEEPSEEK_BASE_URL,
+  DEEPSEEK_MODEL_CATALOG,
+} from "../agents/deepseek-models.js";
 export {
   buildTogetherModelDefinition,
   TOGETHER_BASE_URL,

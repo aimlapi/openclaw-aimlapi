@@ -4,6 +4,9 @@
   "private": true,
   "description": "OpenClaw AIMLAPI provider plugin",
   "type": "module",
+  "dependencies": {
+    "@sinclair/typebox": "0.34.48"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"

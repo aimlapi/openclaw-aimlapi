@@ -5044,20 +5044,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   provider: {
                     type: "string",
                   },
-                  maxResults: {
-                    type: "integer",
-                    exclusiveMinimum: 0,
-                    maximum: 9007199254740991,
-                  },
-                  timeoutSeconds: {
-                    type: "integer",
-                    exclusiveMinimum: 0,
-                    maximum: 9007199254740991,
-                  },
-                  cacheTtlMinutes: {
-                    type: "number",
-                    minimum: 0,
-                  },
                   apiKey: {
                     anyOf: [
                       {
@@ -5123,6 +5109,98 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                         ],
                       },
                     ],
+                  },
+                  aimlapi: {
+                    type: "object",
+                    properties: {
+                      apiKey: {
+                        anyOf: [
+                          {
+                            type: "string",
+                          },
+                          {
+                            oneOf: [
+                              {
+                                type: "object",
+                                properties: {
+                                  source: {
+                                    type: "string",
+                                    const: "env",
+                                  },
+                                  provider: {
+                                    type: "string",
+                                    pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                                  },
+                                  id: {
+                                    type: "string",
+                                    pattern: "^[A-Z][A-Z0-9_]{0,127}$",
+                                  },
+                                },
+                                required: ["source", "provider", "id"],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: "object",
+                                properties: {
+                                  source: {
+                                    type: "string",
+                                    const: "file",
+                                  },
+                                  provider: {
+                                    type: "string",
+                                    pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                                  },
+                                  id: {
+                                    type: "string",
+                                  },
+                                },
+                                required: ["source", "provider", "id"],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: "object",
+                                properties: {
+                                  source: {
+                                    type: "string",
+                                    const: "exec",
+                                  },
+                                  provider: {
+                                    type: "string",
+                                    pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                                  },
+                                  id: {
+                                    type: "string",
+                                  },
+                                },
+                                required: ["source", "provider", "id"],
+                                additionalProperties: false,
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                      baseUrl: {
+                        type: "string",
+                      },
+                      model: {
+                        type: "string",
+                      },
+                    },
+                    additionalProperties: false,
+                  },
+                  maxResults: {
+                    type: "integer",
+                    exclusiveMinimum: 0,
+                    maximum: 9007199254740991,
+                  },
+                  timeoutSeconds: {
+                    type: "integer",
+                    exclusiveMinimum: 0,
+                    maximum: 9007199254740991,
+                  },
+                  cacheTtlMinutes: {
+                    type: "number",
+                    minimum: 0,
                   },
                   brave: {
                     type: "object",
@@ -12914,6 +12992,28 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       help: "Search provider id. Auto-detected from available API keys if omitted.",
       tags: ["tools"],
     },
+    "tools.web.search.aimlapi.apiKey": {
+      label: "AI/ML API Search API Key",
+      help: "Legacy AI/ML API key path for web search compatibility (fallback: AIMLAPI_API_KEY env var). Prefer plugins.entries.aimlapi.config.webSearch.apiKey in new configs.",
+      tags: ["security", "auth", "tools"],
+      sensitive: true,
+    },
+    "tools.web.search.aimlapi.baseUrl": {
+      label: "AI/ML API Search Base URL",
+      help: 'Legacy AI/ML API base URL override for web search compatibility (default: "https://api.aimlapi.com/v1"). Prefer plugins.entries.aimlapi.config.webSearch.baseUrl in new configs.',
+      tags: ["tools"],
+    },
+    "tools.web.search.aimlapi.model": {
+      label: "AI/ML API Search Model",
+      help: 'Legacy AI/ML API search model override for web search compatibility (default: "perplexity/sonar-pro"). Prefer plugins.entries.aimlapi.config.webSearch.model in new configs.',
+      tags: ["models", "tools"],
+    },
+    "tools.web.search.apiKey": {
+      label: "Brave Search API Key",
+      help: "Brave Search API key (fallback: BRAVE_API_KEY env var).",
+      tags: ["security", "auth", "tools"],
+      sensitive: true,
+    },
     "tools.web.search.maxResults": {
       label: "Web Search Max Results",
       help: "Number of results to return (1-10).",
@@ -16149,10 +16249,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       sensitive: true,
       tags: ["security", "storage"],
     },
-    "tools.web.search.apiKey": {
-      sensitive: true,
-      tags: ["security", "auth", "tools"],
-    },
     "tools.web.search.brave.apiKey": {
       sensitive: true,
       tags: ["security", "auth", "tools"],
@@ -16286,6 +16382,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       tags: ["security", "auth"],
     },
   },
-  version: "2026.3.22-beta.1",
+  version: "2026.3.24",
   generatedAt: "2026-03-22T21:17:33.302Z",
 } as const satisfies BaseConfigSchemaResponse;
