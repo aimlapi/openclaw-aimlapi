@@ -30,7 +30,6 @@ vi.mock("../plugins/web-search-providers.runtime.js", () => ({
 }));
 
 function createTestProvider(params: {
-  id: "aimlapi" | "brave" | "gemini" | "grok" | "kimi" | "perplexity" | "firecrawl";
   id: "aimlapi" | "brave" | "gemini" | "grok" | "kimi" | "perplexity" | "firecrawl" | "tavily";
   pluginId: string;
   order: number;
