@@ -745,10 +745,6 @@
       "types": "./dist/plugin-sdk/provider-model-shared.d.ts",
       "default": "./dist/plugin-sdk/provider-model-shared.js"
     },
-    "./plugin-sdk/provider-models": {
-      "types": "./dist/plugin-sdk/provider-models.d.ts",
-      "default": "./dist/plugin-sdk/provider-models.js"
-    },
     "./plugin-sdk/provider-moonshot": {
       "types": "./dist/plugin-sdk/provider-moonshot.d.ts",
       "default": "./dist/plugin-sdk/provider-moonshot.js"
