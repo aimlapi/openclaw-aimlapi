@@ -1,6 +1,6 @@
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-auth";
-import { buildSingleProviderApiKeyCatalog } from "openclaw/plugin-sdk/provider-catalog";
+import { buildSingleProviderApiKeyCatalog } from "openclaw/plugin-sdk/provider-catalog-shared";
 import { definePluginEntry } from "./api.js";
 import { augmentAimlapiModelCatalog } from "./model-catalog.js";
 import { AIMLAPI_DEFAULT_MODEL_REF, applyAimlapiConfig } from "./onboard.js";

@@ -2,7 +2,7 @@ import {
   AIMLAPI_BASE_URL,
   discoverAimlapiModels,
   type ModelProviderConfig,
-} from "openclaw/plugin-sdk/aimlapi";
+} from "./runtime-api.js";
 
 export async function buildAimlapiProvider(): Promise<ModelProviderConfig> {
   return {
