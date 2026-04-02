@@ -339,8 +339,9 @@ export function resolveEffectiveEnableState(params: {
 }): { enabled: boolean; reason?: string } {
   const base = resolveEnableState(params.id, params.origin, params.config, params.enabledByDefault);
   if (
+    params.origin === "bundled" &&
     !base.enabled &&
-    base.reason === "bundled (disabled by default)" &&
+    (base.reason === "bundled (disabled by default)" || base.reason === "not in allowlist") &&
     isBundledChannelEnabledByChannelConfig(params.rootConfig, params.id)
   ) {
     return { enabled: true };
@@ -361,9 +362,7 @@ export function resolveMemorySlotDecision(params: {
   // memory slot must stay enabled so its other slot role can still load.
   const isMultiKind = Array.isArray(params.kind) && params.kind.length > 1;
   if (params.slot === null) {
-    return isMultiKind
-      ? { enabled: true }
-      : { enabled: false, reason: "memory slot disabled" };
+    return isMultiKind ? { enabled: true } : { enabled: false, reason: "memory slot disabled" };
   }
   if (typeof params.slot === "string") {
     if (params.slot === params.id) {

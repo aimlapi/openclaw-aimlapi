@@ -201,7 +201,7 @@ async function resolveProviderPluginsForAugmentHooks(params: {
   context: ProviderAugmentModelCatalogContext;
 }): Promise<ProviderPlugin[]> {
   const pluginIds = new Set(
-    resolveNonBundledProviderPluginIds({
+    resolveCatalogHookProviderPluginIds({
       config: params.config,
       workspaceDir: params.workspaceDir,
       env: params.env,

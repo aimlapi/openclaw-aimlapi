@@ -1059,4 +1059,41 @@ describe("provider-runtime", () => {
       }),
     );
   });
+
+  it("keeps bundled catalog augmenters active when models.json is missing", async () => {
+    vi.spyOn(fs, "readFile").mockRejectedValue(
+      Object.assign(new Error("missing"), { code: "ENOENT" }),
+    );
+    resolveCatalogHookProviderPluginIdsMock.mockReturnValue(["openai"]);
+    resolvePluginProvidersMock.mockImplementation((params?: { onlyPluginIds?: string[] }) => {
+      const onlyPluginIds = params?.onlyPluginIds;
+      if (!onlyPluginIds || !onlyPluginIds.includes("openai")) {
+        return [];
+      }
+      return [createOpenAiCatalogProviderPlugin()];
+    });
+
+    await expect(
+      augmentModelCatalogWithProviderPlugins({
+        env: process.env,
+        context: {
+          agentDir: "/tmp/openclaw",
+          env: process.env,
+          entries: [
+            { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
+            { provider: "openai", id: "gpt-5.2-pro", name: "GPT-5.2 Pro" },
+            { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini" },
+            { provider: "openai", id: "gpt-5-nano", name: "GPT-5 nano" },
+            { provider: "openai-codex", id: "gpt-5.4", name: "GPT-5.4" },
+          ],
+        },
+      }),
+    ).resolves.toEqual(expectedAugmentedOpenaiCodexCatalogEntries);
+
+    expect(resolvePluginProvidersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onlyPluginIds: ["openai"],
+      }),
+    );
+  });
 });
