@@ -5156,20 +5156,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                       },
                     ],
                   },
-                  maxResults: {
-                    type: "integer",
-                    exclusiveMinimum: 0,
-                    maximum: 9007199254740991,
-                  },
-                  timeoutSeconds: {
-                    type: "integer",
-                    exclusiveMinimum: 0,
-                    maximum: 9007199254740991,
-                  },
-                  cacheTtlMinutes: {
-                    type: "number",
-                    minimum: 0,
-                  },
                   openaiCodex: {
                     type: "object",
                     properties: {
@@ -15181,10 +15167,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     "agents.list[].sandbox.ssh.knownHostsData": {
       sensitive: true,
       tags: ["security", "storage"],
-    },
-    "tools.web.search.apiKey": {
-      sensitive: true,
-      tags: ["security", "auth", "tools"],
     },
     "tools.web.fetch.firecrawl.apiKey": {
       sensitive: true,

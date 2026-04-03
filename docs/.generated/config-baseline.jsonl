@@ -5742,7 +5742,7 @@
 {"recordType":"path","path":"tools.web.fetch.timeoutSeconds","kind":"core","type":"integer","required":false,"deprecated":false,"sensitive":false,"tags":["performance","tools"],"label":"Web Fetch Timeout (sec)","help":"Timeout in seconds for web_fetch requests.","hasChildren":false}
 {"recordType":"path","path":"tools.web.fetch.userAgent","kind":"core","type":"string","required":false,"deprecated":false,"sensitive":false,"tags":["tools"],"label":"Web Fetch User-Agent","help":"Override User-Agent header for web_fetch requests.","hasChildren":false}
 {"recordType":"path","path":"tools.web.search","kind":"core","type":"object","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":true}
-{"recordType":"path","path":"tools.web.search.apiKey","kind":"core","type":["object","string"],"required":false,"deprecated":false,"sensitive":true,"tags":["auth","security","tools"],"hasChildren":true}
+{"recordType":"path","path":"tools.web.search.apiKey","kind":"core","type":["object","string"],"required":false,"deprecated":false,"sensitive":true,"tags":["auth","security","tools"],"label":"Brave Search API Key","help":"Brave Search API key (fallback: BRAVE_API_KEY env var).","hasChildren":true}
 {"recordType":"path","path":"tools.web.search.apiKey.id","kind":"core","type":"string","required":true,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"tools.web.search.apiKey.provider","kind":"core","type":"string","required":true,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"tools.web.search.apiKey.source","kind":"core","type":"string","required":true,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
