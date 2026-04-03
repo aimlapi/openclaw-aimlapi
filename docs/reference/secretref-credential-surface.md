@@ -41,7 +41,6 @@ Scope intent:
 - `plugins.entries.tavily.config.webSearch.apiKey`
 - `tools.web.search.aimlapi.apiKey`
 - `tools.web.search.apiKey`
-- `tools.web.x_search.apiKey`
 - `gateway.auth.password`
 - `gateway.auth.token`
 - `gateway.remote.token`
