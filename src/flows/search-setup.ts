@@ -132,7 +132,7 @@ function providerIsReady(
 
 function hasImplicitProviderAuth(
   config: OpenClawConfig,
-  provider: SearchProvider | string,
+  provider: string,
 ): boolean {
   if (provider !== "aimlapi") {
     return false;
