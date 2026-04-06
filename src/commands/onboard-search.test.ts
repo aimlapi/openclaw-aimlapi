@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
-import { SEARCH_PROVIDER_OPTIONS, setupSearch } from "./onboard-search.js";
+import { listSearchProviderOptions, setupSearch } from "./onboard-search.js";
+
+const { resolveApiKeyForProviderMock } = vi.hoisted(() => ({
+  resolveApiKeyForProviderMock: vi.fn(),
+}));
+
+vi.mock("../agents/model-auth.js", () => ({
+  resolveApiKeyForProvider: resolveApiKeyForProviderMock,
+}));
 
 const runtime: RuntimeEnv = {
   log: vi.fn(),
@@ -28,12 +36,18 @@ const SEARCH_PROVIDER_ENV_VARS = [
 
 let originalSearchProviderEnv: Partial<Record<(typeof SEARCH_PROVIDER_ENV_VARS)[number], string>> =
   {};
+const originalFetch = global.fetch;
 
-function createPrompter(params: { selectValue?: string; textValue?: string }): {
+function createPrompter(params: {
+  selectValue?: string;
+  selectValues?: string[];
+  textValue?: string;
+}): {
   prompter: WizardPrompter;
   notes: Array<{ title?: string; message: string }>;
 } {
   const notes: Array<{ title?: string; message: string }> = [];
+  const remainingSelectValues = [...(params.selectValues ?? [])];
   const prompter: WizardPrompter = {
     intro: vi.fn(async () => {}),
     outro: vi.fn(async () => {}),
@@ -41,7 +55,7 @@ function createPrompter(params: { selectValue?: string; textValue?: string }): {
       notes.push({ title, message });
     }),
     select: vi.fn(
-      async () => params.selectValue ?? "perplexity",
+      async () => remainingSelectValues.shift() ?? params.selectValue ?? "perplexity",
     ) as unknown as WizardPrompter["select"],
     multiselect: vi.fn(async () => []) as unknown as WizardPrompter["multiselect"],
     text: vi.fn(async () => params.textValue ?? ""),
@@ -149,6 +163,8 @@ async function runQuickstartPerplexitySetup(
 
 describe("setupSearch", () => {
   beforeEach(() => {
+    resolveApiKeyForProviderMock.mockReset();
+    resolveApiKeyForProviderMock.mockRejectedValue(new Error("missing auth"));
     originalSearchProviderEnv = Object.fromEntries(
       SEARCH_PROVIDER_ENV_VARS.map((key) => [key, process.env[key]]),
     );
@@ -158,6 +174,7 @@ describe("setupSearch", () => {
   });
 
   afterEach(() => {
+    global.fetch = originalFetch;
     for (const key of SEARCH_PROVIDER_ENV_VARS) {
       const value = originalSearchProviderEnv[key];
       if (value === undefined) {
@@ -202,6 +219,13 @@ describe("setupSearch", () => {
   });
 
   it("reuses configured AIMLAPI provider auth without prompting for a second web-search key", async () => {
+    resolveApiKeyForProviderMock.mockResolvedValue({
+      apiKey: "aiml-profile-key",
+      source: "profile:aimlapi:default",
+      profileId: "aimlapi:default",
+      mode: "api-key",
+    });
+    global.fetch = vi.fn(async () => new Response("", { status: 400 })) as typeof fetch;
     const text = vi.fn(async () => "");
     const prompter: WizardPrompter = {
       intro: vi.fn(async () => {}),
@@ -233,6 +257,60 @@ describe("setupSearch", () => {
     expect(result.tools?.web?.search?.enabled).toBe(true);
     expect(result.plugins?.entries?.aimlapi?.enabled).toBe(true);
     expect(text).not.toHaveBeenCalled();
+    expect(resolveApiKeyForProviderMock).toHaveBeenCalledWith({
+      provider: "aimlapi",
+      cfg: expect.objectContaining({
+        auth: expect.any(Object),
+      }),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.aimlapi.com/v1/chat/completions",
+      expect.objectContaining({
+        method: "POST",
+        body: "",
+      }),
+    );
+  });
+
+  it("does not trust AIMLAPI profile metadata when auth probe returns 401", async () => {
+    resolveApiKeyForProviderMock.mockResolvedValue({
+      apiKey: "aiml-invalid-key",
+      source: "profile:aimlapi:default",
+      profileId: "aimlapi:default",
+      mode: "api-key",
+    });
+    global.fetch = vi.fn(async () => new Response("", { status: 401 })) as typeof fetch;
+    const text = vi.fn(async () => "");
+    const prompter: WizardPrompter = {
+      intro: vi.fn(async () => {}),
+      outro: vi.fn(async () => {}),
+      note: vi.fn(async () => {}),
+      select: vi.fn(async () => "aimlapi") as unknown as WizardPrompter["select"],
+      multiselect: vi.fn(async () => []) as unknown as WizardPrompter["multiselect"],
+      text,
+      confirm: vi.fn(async () => true),
+      progress: vi.fn(() => ({ update: vi.fn(), stop: vi.fn() })),
+    };
+
+    const result = await setupSearch(
+      {
+        auth: {
+          profiles: {
+            "aimlapi:default": {
+              provider: "aimlapi",
+              mode: "api_key",
+            },
+          },
+        },
+      } as OpenClawConfig,
+      runtime,
+      prompter,
+    );
+
+    expect(result.tools?.web?.search?.provider).toBe("aimlapi");
+    expect(result.tools?.web?.search?.enabled).toBeUndefined();
+    expect(result.plugins?.entries?.aimlapi?.enabled).toBeUndefined();
+    expect(text).toHaveBeenCalled();
   });
 
   it("sets provider and key for brave", async () => {
@@ -308,14 +386,22 @@ describe("setupSearch", () => {
   it("sets provider and key for kimi", async () => {
     const cfg: OpenClawConfig = {};
     const { prompter } = createPrompter({
-      selectValue: "kimi",
+      selectValues: ["kimi", "https://api.moonshot.ai/v1", "__keep__"],
       textValue: "sk-moonshot",
     });
     const result = await setupSearch(cfg, runtime, prompter);
+    const kimiWebSearchConfig = result.plugins?.entries?.moonshot?.config?.webSearch as
+      | {
+          baseUrl?: string;
+          model?: string;
+        }
+      | undefined;
     expect(result.tools?.web?.search?.provider).toBe("kimi");
     expect(result.tools?.web?.search?.enabled).toBe(true);
     expect(pluginWebSearchApiKey(result, "moonshot")).toBe("sk-moonshot");
     expect(result.plugins?.entries?.moonshot?.enabled).toBe(true);
+    expect(kimiWebSearchConfig?.baseUrl).toBe("https://api.moonshot.ai/v1");
+    expect(kimiWebSearchConfig?.model).toBe("kimi-k2.5");
   });
 
   it("sets provider and key for tavily and enables the plugin", async () => {
@@ -649,8 +735,9 @@ describe("setupSearch", () => {
   });
 
   it("exports all providers in alphabetical order", () => {
-    const values = SEARCH_PROVIDER_OPTIONS.map((e) => e.id);
-    expect(SEARCH_PROVIDER_OPTIONS).toHaveLength(9);
+    const providers = listSearchProviderOptions();
+    const values = providers.map((e) => e.id);
+    expect(providers).toHaveLength(10);
     expect(values).toEqual([
       "aimlapi",
       "brave",
@@ -658,6 +745,7 @@ describe("setupSearch", () => {
       "gemini",
       "grok",
       "kimi",
+      "ollama",
       "perplexity",
       "searxng",
       "tavily",
