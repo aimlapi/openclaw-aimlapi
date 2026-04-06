@@ -1,12 +1,7 @@
-import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
-import {
-  withBundledPluginAllowlistCompat,
-  withBundledPluginEnablementCompat,
-  withBundledPluginVitestCompat,
-} from "./bundled-compat.js";
-import { resolveBundledWebFetchPluginIds } from "./bundled-web-fetch.js";
-import { normalizePluginsConfig, type NormalizedPluginsConfig } from "./config-state.js";
+import { resolveBundledPluginCompatibleActivationInputs } from "./activation-context.js";
+import { type NormalizedPluginsConfig } from "./config-state.js";
 import type { PluginLoadOptions } from "./loader.js";
+import { resolveManifestContractPluginIds } from "./manifest-registry.js";
 import type { PluginWebFetchProviderEntry } from "./types.js";
 
 function resolveBundledWebFetchCompatPluginIds(params: {
@@ -14,7 +9,9 @@ function resolveBundledWebFetchCompatPluginIds(params: {
   workspaceDir?: string;
   env?: PluginLoadOptions["env"];
 }): string[] {
-  return resolveBundledWebFetchPluginIds({
+  return resolveManifestContractPluginIds({
+    contract: "webFetchProviders",
+    origin: "bundled",
     config: params.config,
     workspaceDir: params.workspaceDir,
     env: params.env,
@@ -55,37 +52,26 @@ export function resolveBundledWebFetchResolutionConfig(params: {
 }): {
   config: PluginLoadOptions["config"];
   normalized: NormalizedPluginsConfig;
+  activationSourceConfig?: PluginLoadOptions["config"];
+  autoEnabledReasons: Record<string, string[]>;
 } {
-  const autoEnabledConfig =
-    params.config !== undefined
-      ? applyPluginAutoEnable({
-          config: params.config,
-          env: params.env ?? process.env,
-        }).config
-      : undefined;
-  const bundledCompatPluginIds = resolveBundledWebFetchCompatPluginIds({
-    config: autoEnabledConfig,
+  const activation = resolveBundledPluginCompatibleActivationInputs({
+    rawConfig: params.config,
+    env: params.env,
     workspaceDir: params.workspaceDir,
-    env: params.env,
-  });
-  const allowlistCompat = params.bundledAllowlistCompat
-    ? withBundledPluginAllowlistCompat({
-        config: autoEnabledConfig,
-        pluginIds: bundledCompatPluginIds,
-      })
-    : autoEnabledConfig;
-  const enablementCompat = withBundledPluginEnablementCompat({
-    config: allowlistCompat,
-    pluginIds: bundledCompatPluginIds,
-  });
-  const config = withBundledPluginVitestCompat({
-    config: enablementCompat,
-    pluginIds: bundledCompatPluginIds,
-    env: params.env,
+    applyAutoEnable: true,
+    compatMode: {
+      allowlist: params.bundledAllowlistCompat,
+      enablement: "always",
+      vitest: true,
+    },
+    resolveCompatPluginIds: resolveBundledWebFetchCompatPluginIds,
   });
 
   return {
-    config,
-    normalized: normalizePluginsConfig(config?.plugins),
+    config: activation.config,
+    normalized: activation.normalized,
+    activationSourceConfig: activation.activationSourceConfig,
+    autoEnabledReasons: activation.autoEnabledReasons,
   };
 }
