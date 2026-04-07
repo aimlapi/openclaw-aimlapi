@@ -25,27 +25,31 @@ export function buildAimlapiModelDefinition(): ModelDefinitionConfig {
   };
 }
 
-const AIMLAPI_STATIC_CATALOG: ModelDefinitionConfig[] = [
-  buildAimlapiModelDefinition(),
-  {
-    id: "openai/gpt-4o",
-    name: "GPT 4o",
-    reasoning: false,
-    input: ["text", "image"],
-    cost: AIMLAPI_DEFAULT_COST,
-    contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
-    maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
-  },
-  {
-    id: "openai/gpt-4o-mini",
-    name: "GPT 4o mini",
-    reasoning: false,
-    input: ["text", "image"],
-    cost: AIMLAPI_DEFAULT_COST,
-    contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
-    maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
-  },
-];
+export function buildAimlapiStaticCatalog(): ModelDefinitionConfig[] {
+  return [
+    buildAimlapiModelDefinition(),
+    {
+      id: "openai/gpt-4o",
+      name: "GPT 4o",
+      reasoning: false,
+      input: ["text", "image"],
+      cost: AIMLAPI_DEFAULT_COST,
+      contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+      maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
+    },
+    {
+      id: "openai/gpt-4o-mini",
+      name: "GPT 4o mini",
+      reasoning: false,
+      input: ["text", "image"],
+      cost: AIMLAPI_DEFAULT_COST,
+      contextWindow: AIMLAPI_DEFAULT_CONTEXT_WINDOW,
+      maxTokens: AIMLAPI_DEFAULT_MAX_TOKENS,
+    },
+  ];
+}
+
+const AIMLAPI_STATIC_CATALOG: ModelDefinitionConfig[] = buildAimlapiStaticCatalog();
 
 type AimlapiModel = {
   id: string;
@@ -68,6 +72,10 @@ let discoveryCache: ModelDefinitionConfig[] | null = null;
 function cacheAimlapiCatalog(models: ModelDefinitionConfig[]): ModelDefinitionConfig[] {
   discoveryCache = models;
   return models;
+}
+
+function resolveAimlapiStaticFallback(): ModelDefinitionConfig[] {
+  return AIMLAPI_STATIC_CATALOG;
 }
 
 function mapAimlapiModel(model: AimlapiModel): ModelDefinitionConfig {
@@ -114,19 +122,19 @@ export async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> 
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
-        return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+        return resolveAimlapiStaticFallback();
       }
 
       const body = (await response.json()) as AimlapiModelsResponse;
       const list = Array.isArray(body?.data) ? body.data : [];
       if (list.length === 0) {
-        return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+        return resolveAimlapiStaticFallback();
       }
 
       const models = list.filter((model) => model.type === "chat-completion").map(mapAimlapiModel);
-      return cacheAimlapiCatalog(models.length > 0 ? models : AIMLAPI_STATIC_CATALOG);
+      return models.length > 0 ? cacheAimlapiCatalog(models) : resolveAimlapiStaticFallback();
     } catch {
-      return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+      return resolveAimlapiStaticFallback();
     } finally {
       if (!discoveryCache) {
         discoveryPromise = null;
