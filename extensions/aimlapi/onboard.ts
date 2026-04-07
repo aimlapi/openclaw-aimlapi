@@ -1,12 +1,6 @@
-import {
-  AIMLAPI_BASE_URL,
-  AIMLAPI_DEFAULT_MODEL_ID,
-  AIMLAPI_DEFAULT_MODEL_REF,
-  buildAimlapiModelDefinition,
-} from "./runtime-api.js";
+import { AIMLAPI_DEFAULT_MODEL_REF } from "./runtime-api.js";
 import {
   applyAgentDefaultModelPrimary,
-  applyProviderConfigWithDefaultModel,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/provider-onboard";
 
@@ -18,15 +12,16 @@ export function applyAimlapiProviderConfig(cfg: OpenClawConfig): OpenClawConfig 
     ...models[AIMLAPI_DEFAULT_MODEL_REF],
     alias: models[AIMLAPI_DEFAULT_MODEL_REF]?.alias ?? "AI/ML API",
   };
-
-  return applyProviderConfigWithDefaultModel(cfg, {
-    agentModels: models,
-    providerId: "aimlapi",
-    api: "openai-completions",
-    baseUrl: AIMLAPI_BASE_URL,
-    defaultModel: buildAimlapiModelDefinition(),
-    defaultModelId: AIMLAPI_DEFAULT_MODEL_ID,
-  });
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...cfg.agents?.defaults,
+        models,
+      },
+    },
+  };
 }
 
 export function applyAimlapiConfig(cfg: OpenClawConfig): OpenClawConfig {

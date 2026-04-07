@@ -73,6 +73,10 @@ function cacheAimlapiCatalog(models: ModelDefinitionConfig[]): ModelDefinitionCo
   return models;
 }
 
+function resolveAimlapiStaticFallback(): ModelDefinitionConfig[] {
+  return AIMLAPI_STATIC_CATALOG;
+}
+
 function mapAimlapiModel(model: AimlapiModel): ModelDefinitionConfig {
   const modelId = model.id;
   const lowerModelId = modelId.toLowerCase();
@@ -122,21 +126,21 @@ export async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> 
       });
       if (!response.ok) {
         log.warn(`GET /models failed: HTTP ${response.status}, using static catalog`);
-        return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+        return resolveAimlapiStaticFallback();
       }
 
       const body = (await response.json()) as AimlapiModelsResponse;
       const list = Array.isArray(body?.data) ? body.data : [];
       if (list.length === 0) {
         log.warn("GET /models returned empty data, using static catalog");
-        return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+        return resolveAimlapiStaticFallback();
       }
 
       const models = list.filter((model) => model.type === "chat-completion").map(mapAimlapiModel);
-      return cacheAimlapiCatalog(models.length > 0 ? models : AIMLAPI_STATIC_CATALOG);
+      return models.length > 0 ? cacheAimlapiCatalog(models) : resolveAimlapiStaticFallback();
     } catch (error) {
       log.warn(`AIMLAPI discovery failed: ${String(error)}, using static catalog`);
-      return cacheAimlapiCatalog(AIMLAPI_STATIC_CATALOG);
+      return resolveAimlapiStaticFallback();
     } finally {
       if (!discoveryCache) {
         discoveryPromise = null;
