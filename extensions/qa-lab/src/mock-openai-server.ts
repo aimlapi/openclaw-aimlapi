@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { setTimeout as sleep } from "node:timers/promises";
 
 type ResponsesInputItem = Record<string, unknown>;
 
@@ -27,11 +28,13 @@ type MockOpenAiRequestSnapshot = {
   allInputText: string;
   toolOutput: string;
   model: string;
+  imageInputCount: number;
   plannedToolName?: string;
 };
 
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0nQAAAAASUVORK5CYII=";
+let subagentFanoutPhase = 0;
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -69,17 +72,7 @@ function extractLastUserText(input: ResponsesInputItem[]) {
     if (item.role !== "user" || !Array.isArray(item.content)) {
       continue;
     }
-    const text = item.content
-      .filter(
-        (entry): entry is { type: "input_text"; text: string } =>
-          !!entry &&
-          typeof entry === "object" &&
-          (entry as { type?: unknown }).type === "input_text" &&
-          typeof (entry as { text?: unknown }).text === "string",
-      )
-      .map((entry) => entry.text)
-      .join("\n")
-      .trim();
+    const text = extractInputText(item.content);
     if (text) {
       return text;
     }
@@ -108,23 +101,27 @@ function extractToolOutput(input: ResponsesInputItem[]) {
   return "";
 }
 
+function extractInputText(content: unknown[]): string {
+  return content
+    .filter(
+      (entry): entry is { type: "input_text"; text: string } =>
+        !!entry &&
+        typeof entry === "object" &&
+        (entry as { type?: unknown }).type === "input_text" &&
+        typeof (entry as { text?: unknown }).text === "string",
+    )
+    .map((entry) => entry.text)
+    .join("\n")
+    .trim();
+}
+
 function extractAllUserTexts(input: ResponsesInputItem[]) {
   const texts: string[] = [];
   for (const item of input) {
     if (item.role !== "user" || !Array.isArray(item.content)) {
       continue;
     }
-    const text = item.content
-      .filter(
-        (entry): entry is { type: "input_text"; text: string } =>
-          !!entry &&
-          typeof entry === "object" &&
-          (entry as { type?: unknown }).type === "input_text" &&
-          typeof (entry as { text?: unknown }).text === "string",
-      )
-      .map((entry) => entry.text)
-      .join("\n")
-      .trim();
+    const text = extractInputText(item.content);
     if (text) {
       texts.push(text);
     }
@@ -141,22 +138,31 @@ function extractAllInputTexts(input: ResponsesInputItem[]) {
     if (!Array.isArray(item.content)) {
       continue;
     }
-    const text = item.content
-      .filter(
-        (entry): entry is { type: "input_text"; text: string } =>
-          !!entry &&
-          typeof entry === "object" &&
-          (entry as { type?: unknown }).type === "input_text" &&
-          typeof (entry as { text?: unknown }).text === "string",
-      )
-      .map((entry) => entry.text)
-      .join("\n")
-      .trim();
+    const text = extractInputText(item.content);
     if (text) {
       texts.push(text);
     }
   }
   return texts.join("\n");
+}
+
+function countImageInputs(input: ResponsesInputItem[]) {
+  let count = 0;
+  for (const item of input) {
+    if (!Array.isArray(item.content)) {
+      continue;
+    }
+    for (const entry of item.content) {
+      if (
+        entry &&
+        typeof entry === "object" &&
+        (entry as { type?: unknown }).type === "input_image"
+      ) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 function parseToolOutputJson(toolOutput: string): Record<string, unknown> | null {
@@ -276,7 +282,16 @@ function extractRememberedFact(userTexts: string[]) {
 }
 
 function extractOrbitCode(text: string) {
-  return /\b(?:ORBIT-9|orbit-9)\b/.exec(text)?.[0]?.toUpperCase() ?? null;
+  return /\bORBIT-\d+\b/i.exec(text)?.[0]?.toUpperCase() ?? null;
+}
+
+function extractExactReplyDirective(text: string) {
+  const match = /reply with exactly:\s*([^\n]+)/i.exec(text);
+  return match?.[1]?.trim() || null;
+}
+
+function isHeartbeatPrompt(text: string) {
+  return /Read HEARTBEAT\.md if it exists/i.test(text);
 }
 
 function buildAssistantText(input: ResponsesInputItem[], body: Record<string, unknown>) {
@@ -295,6 +310,8 @@ function buildAssistantText(input: ResponsesInputItem[], body: Record<string, un
         : toolOutput;
   const orbitCode = extractOrbitCode(memorySnippet);
   const mediaPath = /MEDIA:([^\n]+)/.exec(toolOutput)?.[1]?.trim();
+  const exactReplyDirective = extractExactReplyDirective(allInputText);
+  const imageInputCount = countImageInputs(input);
 
   if (/what was the qa canary code/i.test(prompt) && rememberedFact) {
     return `Protocol note: the QA canary code was ${rememberedFact}.`;
@@ -305,6 +322,12 @@ function buildAssistantText(input: ResponsesInputItem[], body: Record<string, un
   if (/memory unavailable check/i.test(prompt)) {
     return "Protocol note: I checked the available runtime context but could not confirm the hidden memory-only fact, so I will not guess.";
   }
+  if (isHeartbeatPrompt(prompt)) {
+    return "HEARTBEAT_OK";
+  }
+  if (/\bmarker\b/i.test(prompt) && exactReplyDirective) {
+    return exactReplyDirective;
+  }
   if (/visible skill marker/i.test(prompt)) {
     return "VISIBLE-SKILL-OK";
   }
@@ -314,16 +337,46 @@ function buildAssistantText(input: ResponsesInputItem[], body: Record<string, un
   if (/memory tools check/i.test(prompt) && orbitCode) {
     return `Protocol note: I checked memory and the project codename is ${orbitCode}.`;
   }
+  if (/tool continuity check/i.test(prompt) && toolOutput) {
+    return `Protocol note: model switch handoff confirmed on ${model || "the requested model"}. QA mission from QA_KICKOFF_TASK.md still applies: understand this OpenClaw repo from source + docs before acting.`;
+  }
+  if (/session memory ranking check/i.test(prompt) && orbitCode) {
+    return `Protocol note: I checked memory and the current Project Nebula codename is ${orbitCode}.`;
+  }
+  if (/thread memory check/i.test(prompt) && orbitCode) {
+    return `Protocol note: I checked memory in-thread and the hidden thread codename is ${orbitCode}.`;
+  }
   if (/switch(?:ing)? models?/i.test(prompt)) {
     return `Protocol note: model switch acknowledged. Continuing on ${model || "the requested model"}.`;
   }
-  if (/tool continuity check/i.test(prompt) && toolOutput) {
-    return `Protocol note: model switch acknowledged. Tool continuity held on ${model || "the requested model"}.`;
-  }
-  if (/image generation check/i.test(prompt) && mediaPath) {
+  if (/(image generation check|capability flip image check)/i.test(prompt) && mediaPath) {
     return `Protocol note: generated the QA lighthouse image successfully.\nMEDIA:${mediaPath}`;
   }
-  if (toolOutput && /delegate|subagent/i.test(prompt)) {
+  if (/roundtrip image inspection check/i.test(prompt) && imageInputCount > 0) {
+    return "Protocol note: the generated attachment shows the same QA lighthouse scene from the previous step.";
+  }
+  if (/image understanding check/i.test(prompt) && imageInputCount > 0) {
+    return "Protocol note: the attached image is split horizontally, with red on top and blue on the bottom.";
+  }
+  if (
+    /interrupted by a gateway reload/i.test(prompt) &&
+    /subagent recovery worker/i.test(allInputText)
+  ) {
+    return "RECOVERED-SUBAGENT-OK";
+  }
+  if (/subagent recovery worker/i.test(prompt)) {
+    return "RECOVERED-SUBAGENT-OK";
+  }
+  if (/fanout worker alpha/i.test(prompt)) {
+    return "ALPHA-OK";
+  }
+  if (/fanout worker beta/i.test(prompt)) {
+    return "BETA-OK";
+  }
+  if (/subagent fanout synthesis check/i.test(prompt) && toolOutput && subagentFanoutPhase >= 2) {
+    return "Protocol note: delegated fanout complete. Alpha=ALPHA-OK. Beta=BETA-OK.";
+  }
+  if (toolOutput && (/\bdelegate\b/i.test(prompt) || /subagent handoff/i.test(prompt))) {
     return `Protocol note: delegated result acknowledged. The bounded subagent task returned and is folded back into the main thread.`;
   }
   if (toolOutput && /worked, failed, blocked|worked\/failed\/blocked|follow-up/i.test(prompt)) {
@@ -398,7 +451,7 @@ function buildAssistantEvents(text: string): StreamEvent[] {
   ];
 }
 
-function buildResponsesPayload(body: Record<string, unknown>) {
+async function buildResponsesPayload(body: Record<string, unknown>) {
   const input = Array.isArray(body.input) ? (body.input as ResponsesInputItem[]) : [];
   const prompt = extractLastUserText(input);
   const toolOutput = extractToolOutput(input);
@@ -406,6 +459,9 @@ function buildResponsesPayload(body: Record<string, unknown>) {
   const allInputText = extractAllInputTexts(input);
   const isGroupChat = allInputText.includes('"is_group_chat": true');
   const isBaselineUnmentionedChannelChatter = /\bno bot ping here\b/i.test(prompt);
+  if (isHeartbeatPrompt(prompt)) {
+    return buildAssistantEvents("HEARTBEAT_OK");
+  }
   if (/lobster invaders/i.test(prompt)) {
     if (!toolOutput) {
       return buildToolCallEventsWithArgs("read", { path: "QA_KICKOFF_TASK.md" });
@@ -449,17 +505,97 @@ function buildResponsesPayload(body: Record<string, unknown>) {
       });
     }
   }
-  if (/image generation check/i.test(prompt) && !toolOutput) {
+  if (/session memory ranking check/i.test(prompt)) {
+    if (!toolOutput) {
+      return buildToolCallEventsWithArgs("memory_search", {
+        query: "current Project Nebula codename ORBIT-10",
+        maxResults: 3,
+      });
+    }
+    const results = Array.isArray(toolJson?.results)
+      ? (toolJson.results as Array<Record<string, unknown>>)
+      : [];
+    const first = results[0];
+    const firstPath = typeof first?.path === "string" ? first.path : undefined;
+    if (first?.source === "sessions" || firstPath?.startsWith("sessions/")) {
+      return buildAssistantEvents(
+        "Protocol note: I checked memory and the current Project Nebula codename is ORBIT-10.",
+      );
+    }
+    if (
+      typeof first?.path === "string" &&
+      (typeof first.startLine === "number" || typeof first.endLine === "number")
+    ) {
+      const from =
+        typeof first.startLine === "number"
+          ? Math.max(1, first.startLine)
+          : typeof first.endLine === "number"
+            ? Math.max(1, first.endLine)
+            : 1;
+      return buildToolCallEventsWithArgs("memory_get", {
+        path: first.path,
+        from,
+        lines: 4,
+      });
+    }
+  }
+  if (/thread memory check/i.test(prompt)) {
+    if (!toolOutput) {
+      return buildToolCallEventsWithArgs("memory_search", {
+        query: "hidden thread codename ORBIT-22",
+        maxResults: 3,
+      });
+    }
+    const results = Array.isArray(toolJson?.results)
+      ? (toolJson.results as Array<Record<string, unknown>>)
+      : [];
+    const first = results[0];
+    if (
+      typeof first?.path === "string" &&
+      (typeof first.startLine === "number" || typeof first.endLine === "number")
+    ) {
+      const from =
+        typeof first.startLine === "number"
+          ? Math.max(1, first.startLine)
+          : typeof first.endLine === "number"
+            ? Math.max(1, first.endLine)
+            : 1;
+      return buildToolCallEventsWithArgs("memory_get", {
+        path: first.path,
+        from,
+        lines: 4,
+      });
+    }
+  }
+  if (/(image generation check|capability flip image check)/i.test(prompt) && !toolOutput) {
     return buildToolCallEventsWithArgs("image_generate", {
       prompt: "A QA lighthouse on a dark sea with a tiny protocol droid silhouette.",
       filename: "qa-lighthouse.png",
       size: "1024x1024",
     });
   }
+  if (/subagent fanout synthesis check/i.test(prompt)) {
+    if (!toolOutput && subagentFanoutPhase === 0) {
+      subagentFanoutPhase = 1;
+      return buildToolCallEventsWithArgs("sessions_spawn", {
+        task: "Fanout worker alpha: inspect the QA workspace and finish with exactly ALPHA-OK.",
+        label: "qa-fanout-alpha",
+        thread: false,
+      });
+    }
+    if (toolOutput && subagentFanoutPhase === 1) {
+      subagentFanoutPhase = 2;
+      return buildToolCallEventsWithArgs("sessions_spawn", {
+        task: "Fanout worker beta: inspect the QA workspace and finish with exactly BETA-OK.",
+        label: "qa-fanout-beta",
+        thread: false,
+      });
+    }
+  }
   if (/tool continuity check/i.test(prompt) && !toolOutput) {
     return buildToolCallEventsWithArgs("read", { path: "QA_KICKOFF_TASK.md" });
   }
-  if (/delegate|subagent/i.test(prompt) && !toolOutput) {
+  if ((/\bdelegate\b/i.test(prompt) || /subagent handoff/i.test(prompt)) && !toolOutput) {
     return buildToolCallEventsWithArgs("sessions_spawn", {
       task: "Inspect the QA workspace and return one concise protocol note.",
       label: "qa-sidecar",
@@ -484,13 +620,21 @@ function buildResponsesPayload(body: Record<string, unknown>) {
   if (isGroupChat && isBaselineUnmentionedChannelChatter && !toolOutput) {
     return buildAssistantEvents("NO_REPLY");
   }
+  if (
+    /subagent recovery worker/i.test(prompt) &&
+    !/interrupted by a gateway reload/i.test(prompt)
+  ) {
+    await sleep(60_000);
+  }
   return buildAssistantEvents(buildAssistantText(input, body));
 }
 
 export async function startQaMockOpenAiServer(params?: { host?: string; port?: number }) {
   const host = params?.host ?? "127.0.0.1";
+  subagentFanoutPhase = 0;
   let lastRequest: MockOpenAiRequestSnapshot | null = null;
   const requests: MockOpenAiRequestSnapshot[] = [];
+  const imageGenerationRequests: Array<Record<string, unknown>> = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/readyz")) {
@@ -515,7 +659,17 @@ export async function startQaMockOpenAiServer(params?: { host?: string; port?: n
       writeJson(res, 200, requests);
       return;
     }
+    if (req.method === "GET" && url.pathname === "/debug/image-generations") {
+      writeJson(res, 200, imageGenerationRequests);
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/v1/images/generations") {
+      const raw = await readBody(req);
+      const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      imageGenerationRequests.push(body);
+      if (imageGenerationRequests.length > 20) {
+        imageGenerationRequests.splice(0, imageGenerationRequests.length - 20);
+      }
       writeJson(res, 200, {
         data: [
           {
@@ -530,7 +684,7 @@ export async function startQaMockOpenAiServer(params?: { host?: string; port?: n
       const raw = await readBody(req);
       const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       const input = Array.isArray(body.input) ? (body.input as ResponsesInputItem[]) : [];
-      const events = buildResponsesPayload(body);
+      const events = await buildResponsesPayload(body);
       lastRequest = {
         raw,
         body,
@@ -538,6 +692,7 @@ export async function startQaMockOpenAiServer(params?: { host?: string; port?: n
         allInputText: extractAllInputTexts(input),
         toolOutput: extractToolOutput(input),
         model: typeof body.model === "string" ? body.model : "",
+        imageInputCount: countImageInputs(input),
         plannedToolName: extractPlannedToolName(events),
       };
       requests.push(lastRequest);

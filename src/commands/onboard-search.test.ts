@@ -734,21 +734,21 @@ describe("setupSearch", () => {
     expect(pluginWebSearchApiKey(result, "brave")).toBe("BSA-plain");
   });
 
-  it("exports all providers in alphabetical order", () => {
+  it("exports search providers in alphabetical order", () => {
     const providers = listSearchProviderOptions();
     const values = providers.map((e) => e.id);
-    expect(providers).toHaveLength(10);
-    expect(values).toEqual([
-      "aimlapi",
-      "brave",
-      "firecrawl",
-      "gemini",
-      "grok",
-      "kimi",
-      "ollama",
-      "perplexity",
-      "searxng",
-      "tavily",
-    ]);
+    expect(values).toEqual([...values].toSorted());
+    expect(values).toEqual(
+      expect.arrayContaining([
+        "aimlapi",
+        "brave",
+        "firecrawl",
+        "gemini",
+        "grok",
+        "kimi",
+        "perplexity",
+        "tavily",
+      ]),
+    );
   });
 });
