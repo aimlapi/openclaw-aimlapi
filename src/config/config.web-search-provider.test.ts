@@ -185,6 +185,7 @@ vi.mock("../plugins/manifest-registry.js", () => {
           contracts: {
             webSearchProviders: ["brave"],
           },
+          cliBackends: [],
           skills: [],
           hooks: [],
           rootDir: "/tmp/plugins/brave",
@@ -210,6 +211,7 @@ vi.mock("../plugins/manifest-registry.js", () => {
           contracts: {
             webSearchProviders: [id],
           },
+          cliBackends: [],
           skills: [],
           hooks: [],
           rootDir: `/tmp/plugins/${id}`,

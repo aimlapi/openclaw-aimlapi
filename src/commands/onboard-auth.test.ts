@@ -8,18 +8,18 @@ import {
   AIMLAPI_DEFAULT_MODEL_ID,
   buildAimlapiDefaultModelDefinition,
 } from "../agents/aimlapi-models.js";
+import { resolveAgentModelFallbackValues, resolveAgentModelPrimaryValue } from "../config/model-input.js";
+import { AIMLAPI_DEFAULT_MODEL_REF } from "../plugin-sdk/aimlapi.js";
 import {
   applyAgentDefaultModelPrimary,
   applyProviderConfigWithDefaultModel,
   type OpenClawConfig as ProviderOnboardConfig,
 } from "../plugin-sdk/provider-onboard.js";
-import { AIMLAPI_DEFAULT_MODEL_REF } from "../plugin-sdk/aimlapi.js";
 import {
   applyAuthProfileConfig,
+  upsertApiKeyProfile,
+  writeOAuthCredentials,
 } from "../plugins/provider-auth-helpers.js";
-import type { OpenClawConfig } from "../config/config.js";
-import { setMinimaxApiKey, writeOAuthCredentials } from "../plugins/provider-auth-storage.js";
-import { resolveAgentModelFallbackValues, resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import {
   createAuthTestLifecycle,
   readAuthProfilesForAgent,
@@ -198,7 +198,7 @@ describe("writeOAuthCredentials", () => {
   });
 });
 
-describe("setMinimaxApiKey", () => {
+describe("upsertApiKeyProfile", () => {
   const lifecycle = createAuthTestLifecycle([
     "OPENCLAW_STATE_DIR",
     "OPENCLAW_AGENT_DIR",
@@ -213,7 +213,7 @@ describe("setMinimaxApiKey", () => {
     const env = await setupAuthTestEnv("openclaw-minimax-", { agentSubdir: "custom-agent" });
     lifecycle.setStateDir(env.stateDir);
 
-    await setMinimaxApiKey("sk-minimax-test");
+    upsertApiKeyProfile({ provider: "minimax", input: "sk-minimax-test" });
 
     const parsed = await readAuthProfilesForAgent<{
       profiles?: Record<string, { type?: string; provider?: string; key?: string }>;
