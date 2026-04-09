@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
+import type { PluginWebSearchProviderEntry } from "../plugins/types.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { listSearchProviderOptions, setupSearch } from "./onboard-search.js";
@@ -10,6 +11,167 @@ const { resolveApiKeyForProviderMock } = vi.hoisted(() => ({
 
 vi.mock("../agents/model-auth.js", () => ({
   resolveApiKeyForProvider: resolveApiKeyForProviderMock,
+}));
+
+type WebSearchConfigRecord = {
+  plugins?: {
+    entries?: Record<
+      string,
+      { enabled?: boolean; config?: { webSearch?: Record<string, unknown> } }
+    >;
+  };
+};
+
+const SEARCH_PROVIDER_PLUGINS: Record<
+  string,
+  { pluginId: string; envVars: string[]; label: string; credentialLabel?: string }
+> = {
+  aimlapi: {
+    pluginId: "aimlapi",
+    envVars: ["AIMLAPI_API_KEY"],
+    label: "AI/ML API Search",
+    credentialLabel: "AI/ML API Search API key",
+  },
+  brave: { pluginId: "brave", envVars: ["BRAVE_API_KEY"], label: "Brave Search" },
+  firecrawl: { pluginId: "firecrawl", envVars: ["FIRECRAWL_API_KEY"], label: "Firecrawl" },
+  gemini: { pluginId: "google", envVars: ["GEMINI_API_KEY", "GOOGLE_API_KEY"], label: "Gemini" },
+  grok: { pluginId: "xai", envVars: ["XAI_API_KEY"], label: "Grok" },
+  kimi: {
+    pluginId: "moonshot",
+    envVars: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
+    label: "Kimi",
+    credentialLabel: "Moonshot / Kimi API key",
+  },
+  perplexity: {
+    pluginId: "perplexity",
+    envVars: ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"],
+    label: "Perplexity",
+  },
+  tavily: { pluginId: "tavily", envVars: ["TAVILY_API_KEY"], label: "Tavily" },
+};
+
+function getWebSearchConfig(config: OpenClawConfig | undefined, pluginId: string) {
+  return (config as WebSearchConfigRecord | undefined)?.plugins?.entries?.[pluginId]?.config
+    ?.webSearch;
+}
+
+function ensureWebSearchConfig(config: OpenClawConfig, pluginId: string) {
+  const entries = ((config.plugins ??= {}).entries ??= {});
+  const pluginEntry = (entries[pluginId] ??= {}) as {
+    enabled?: boolean;
+    config?: { webSearch?: Record<string, unknown> };
+  };
+  pluginEntry.config ??= {};
+  pluginEntry.config.webSearch ??= {};
+  return pluginEntry.config.webSearch;
+}
+
+function createSearchProviderEntry(id: string): PluginWebSearchProviderEntry {
+  const metadata = SEARCH_PROVIDER_PLUGINS[id];
+  if (!metadata) {
+    throw new Error(`missing search provider fixture: ${id}`);
+  }
+  const entry: PluginWebSearchProviderEntry = {
+    id: id as never,
+    pluginId: metadata.pluginId,
+    label: metadata.label,
+    hint: `${metadata.label} web search`,
+    onboardingScopes: ["text-inference"],
+    envVars: metadata.envVars,
+    placeholder: `${id}-key`,
+    signupUrl: `https://example.com/${id}`,
+    credentialLabel:
+      metadata.credentialLabel ??
+      (id === "gemini" ? "Google Gemini API key" : `${metadata.label} API key`),
+    credentialPath: `plugins.entries.${metadata.pluginId}.config.webSearch.apiKey`,
+    getCredentialValue: () => undefined,
+    setCredentialValue: () => {},
+    getConfiguredCredentialValue: (config) => getWebSearchConfig(config, metadata.pluginId)?.apiKey,
+    setConfiguredCredentialValue: (config, value) => {
+      ensureWebSearchConfig(config, metadata.pluginId).apiKey = value;
+    },
+    createTool: () => null,
+    applySelectionConfig: (config) => {
+      const next: OpenClawConfig = { ...config, plugins: { ...config.plugins } };
+      const entries = { ...next.plugins?.entries } as NonNullable<
+        NonNullable<OpenClawConfig["plugins"]>["entries"]
+      >;
+      entries[metadata.pluginId] = { ...entries[metadata.pluginId], enabled: true };
+      next.plugins = { ...next.plugins, entries };
+      return next;
+    },
+  };
+  if (id === "aimlapi") {
+    entry.hasReusableProviderAuthMetadata = ({ config }) =>
+      Object.entries(config.auth?.profiles ?? {}).some(
+        ([profileId, profile]) =>
+          profileId === "aimlapi:default" ||
+          profileId.startsWith("aimlapi:") ||
+          (typeof profile === "object" && profile !== null && profile.provider === "aimlapi"),
+      );
+    entry.hasReusableProviderAuth = async ({ config }) => {
+      if (!entry.hasReusableProviderAuthMetadata?.({ config })) {
+        return false;
+      }
+      try {
+        const resolved = await resolveApiKeyForProviderMock({
+          provider: "aimlapi",
+          cfg: config,
+        });
+        const apiKey =
+          typeof resolved?.apiKey === "string" ? resolved.apiKey.trim() : undefined;
+        if (!apiKey) {
+          return false;
+        }
+        const response = await global.fetch("https://api.aimlapi.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: "",
+        });
+        return response.ok || response.status === 400;
+      } catch {
+        return false;
+      }
+    };
+  }
+  if (id === "kimi") {
+    entry.runSetup = async ({ config, prompter }) => {
+      const baseUrl = String(
+        await prompter.select({
+          message: "Moonshot endpoint",
+          options: [{ value: "https://api.moonshot.ai/v1", label: "Moonshot" }],
+          initialValue: "https://api.moonshot.ai/v1",
+        }),
+      );
+      const modelChoice = String(
+        await prompter.select({
+          message: "Moonshot web-search model",
+          options: [{ value: "__keep__", label: "Keep default" }],
+          initialValue: "__keep__",
+        }),
+      );
+      const webSearch = ensureWebSearchConfig(config, metadata.pluginId);
+      webSearch.baseUrl = baseUrl;
+      webSearch.model = modelChoice === "__keep__" ? "kimi-k2.5" : modelChoice;
+      return config;
+    };
+  }
+  return entry;
+}
+
+const searchProviderFixture = vi.hoisted(() => ({
+  resolvePluginWebSearchProviders: vi.fn(() =>
+    ["aimlapi", "brave", "firecrawl", "gemini", "grok", "kimi", "perplexity", "tavily"].map((id) =>
+      createSearchProviderEntry(id),
+    ),
+  ),
+}));
+
+vi.mock("../plugins/web-search-providers.runtime.js", () => ({
+  resolvePluginWebSearchProviders: searchProviderFixture.resolvePluginWebSearchProviders,
 }));
 
 const runtime: RuntimeEnv = {
@@ -192,6 +354,29 @@ describe("setupSearch", () => {
     expect(result).toBe(cfg);
   });
 
+  it("ignores reusable-auth hook failures and still shows other providers", async () => {
+    searchProviderFixture.resolvePluginWebSearchProviders.mockReturnValueOnce([
+      {
+        ...createSearchProviderEntry("aimlapi"),
+        hasReusableProviderAuth: vi.fn(async () => {
+          throw new Error("probe failed");
+        }),
+      },
+      createSearchProviderEntry("brave"),
+    ]);
+
+    const cfg: OpenClawConfig = {};
+    const { prompter } = createPrompter({
+      selectValue: "brave",
+      textValue: "BSA-test-key",
+    });
+
+    const result = await setupSearch(cfg, runtime, prompter);
+
+    expect(result.tools?.web?.search?.provider).toBe("brave");
+    expect(pluginWebSearchApiKey(result, "brave")).toBe("BSA-test-key");
+  });
+
   it("sets provider and key for perplexity", async () => {
     const cfg: OpenClawConfig = {};
     const { prompter } = createPrompter({
@@ -218,7 +403,7 @@ describe("setupSearch", () => {
     expect(result.plugins?.entries?.aimlapi?.enabled).toBe(true);
   });
 
-  it("keeps AIMLAPI selected when auth profile metadata exists but setup still needs a key prompt", async () => {
+  it("reuses configured AIMLAPI provider auth without prompting for a second web-search key", async () => {
     resolveApiKeyForProviderMock.mockResolvedValue({
       apiKey: "aiml-profile-key",
       source: "profile:aimlapi:default",
@@ -254,7 +439,7 @@ describe("setupSearch", () => {
     );
 
     expect(result.tools?.web?.search?.provider).toBe("aimlapi");
-    expect(text).toHaveBeenCalledTimes(1);
+    expect(text).not.toHaveBeenCalled();
   });
 
   it("does not trust AIMLAPI profile metadata when auth probe returns 401", async () => {

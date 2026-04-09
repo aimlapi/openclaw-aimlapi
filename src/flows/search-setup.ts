@@ -137,7 +137,11 @@ async function hasImplicitProviderAuth(
   >,
 ): Promise<boolean> {
   if (entry.hasReusableProviderAuth) {
-    return await entry.hasReusableProviderAuth({ config });
+    try {
+      return await entry.hasReusableProviderAuth({ config });
+    } catch {
+      return false;
+    }
   }
 
   if (!(entry.hasReusableProviderAuthMetadata?.({ config }) ?? false)) {
