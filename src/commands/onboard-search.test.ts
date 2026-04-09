@@ -354,6 +354,29 @@ describe("setupSearch", () => {
     expect(result).toBe(cfg);
   });
 
+  it("ignores reusable-auth hook failures and still shows other providers", async () => {
+    searchProviderFixture.resolvePluginWebSearchProviders.mockReturnValueOnce([
+      {
+        ...createSearchProviderEntry("aimlapi"),
+        hasReusableProviderAuth: vi.fn(async () => {
+          throw new Error("probe failed");
+        }),
+      },
+      createSearchProviderEntry("brave"),
+    ]);
+
+    const cfg: OpenClawConfig = {};
+    const { prompter } = createPrompter({
+      selectValue: "brave",
+      textValue: "BSA-test-key",
+    });
+
+    const result = await setupSearch(cfg, runtime, prompter);
+
+    expect(result.tools?.web?.search?.provider).toBe("brave");
+    expect(pluginWebSearchApiKey(result, "brave")).toBe("BSA-test-key");
+  });
+
   it("sets provider and key for perplexity", async () => {
     const cfg: OpenClawConfig = {};
     const { prompter } = createPrompter({
