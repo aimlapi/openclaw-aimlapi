@@ -118,12 +118,9 @@ describe("runSearchSetupFlow", () => {
     });
 
     const config = { plugins: { allow: ["xai"] } };
-    const next = await runSearchSetupFlow(
-      config,
-      createNonExitingRuntime(),
-      prompter,
-      { quickstartDefaults: true },
-    );
+    const next = await runSearchSetupFlow(config, createNonExitingRuntime(), prompter, {
+      quickstartDefaults: true,
+    });
 
     expect(next.tools?.web?.search).toMatchObject({
       provider: "grok",
@@ -156,7 +153,7 @@ describe("runSearchSetupFlow", () => {
         ]),
       }),
     );
-    expect(mockGrokProvider.hasReusableProviderAuth).toHaveBeenCalled();
+    expect(mockGrokProvider.hasReusableProviderAuth).not.toHaveBeenCalled();
 
     mockGrokProvider.hasReusableProviderAuthMetadata = undefined;
     mockGrokProvider.hasReusableProviderAuth = undefined;
