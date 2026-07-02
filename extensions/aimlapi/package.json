@@ -1,0 +1,35 @@
+{
+  "name": "@aimlapi/openclaw-provider",
+  "version": "1.0.0",
+  "description": "AI/ML API model provider plugin for OpenClaw.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aimlapi/openclaw-aimlapi"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@openclaw/plugin-sdk": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@aimlapi/openclaw-provider",
+      "npmSpec": "@aimlapi/openclaw-provider",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.6.11"
+    },
+    "compat": {
+      "pluginApi": ">=2026.6.11"
+    },
+    "build": {
+      "openclawVersion": "2026.6.11",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}
