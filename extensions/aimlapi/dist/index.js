@@ -6,7 +6,7 @@ var DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-chat";
 var AIMLAPI_ATTRIBUTION_HEADERS = {
   "X-AIMLAPI-Partner-ID": "openclaw",
   "X-AIMLAPI-Integration-Repo": "openclaw/openclaw",
-  "X-AIMLAPI-Integration-Version": "1.0.0"
+  "X-AIMLAPI-Integration-Version": "1.0.1"
 };
 function withAimlapiAttributionHeaders(options) {
   const headers = new Headers(options?.headers);

@@ -19,5 +19,5 @@ Every inference request includes the AI/ML API rebates attribution contract:
 ```text
 X-AIMLAPI-Partner-ID: openclaw
 X-AIMLAPI-Integration-Repo: openclaw/openclaw
-X-AIMLAPI-Integration-Version: 1.0.0
+X-AIMLAPI-Integration-Version: 1.0.1
 ```

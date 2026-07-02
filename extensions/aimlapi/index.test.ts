@@ -21,7 +21,7 @@ describe("aimlapi provider plugin", () => {
       headers: {
         authorization: "Bearer test",
         "x-aimlapi-integration-repo": "openclaw/openclaw",
-        "x-aimlapi-integration-version": "1.0.0",
+        "x-aimlapi-integration-version": "1.0.1",
         "x-aimlapi-partner-id": "openclaw",
       },
     });
@@ -50,7 +50,7 @@ describe("aimlapi provider plugin", () => {
     expect(receivedOptions?.headers).toEqual({
       authorization: "Bearer test",
       "x-aimlapi-integration-repo": "openclaw/openclaw",
-      "x-aimlapi-integration-version": "1.0.0",
+      "x-aimlapi-integration-version": "1.0.1",
       "x-aimlapi-partner-id": "openclaw",
     });
   });

@@ -1,6 +1,6 @@
 {
   "name": "@aimlapi/openclaw-provider",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI/ML API model provider plugin for OpenClaw.",
   "repository": {
     "type": "git",

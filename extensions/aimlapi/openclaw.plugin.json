@@ -1,5 +1,6 @@
 {
   "id": "aimlapi",
+  "name": "AI/ML API Provider",
   "activation": {
     "onStartup": false
   },
