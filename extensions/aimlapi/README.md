@@ -6,7 +6,7 @@ OpenClaw's provider-plugin SDK.
 ## Install
 
 ```bash
-openclaw plugins install @aimlapi/openclaw-provider
+openclaw plugins install clawhub:@aimlapi/openclaw-provider
 openclaw onboard --aimlapi-api-key <key>
 ```
 
