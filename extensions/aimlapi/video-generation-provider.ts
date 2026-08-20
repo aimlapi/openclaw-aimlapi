@@ -12,6 +12,7 @@ import type {
   VideoGenerationRequest,
   VideoGenerationResult,
 } from "openclaw/plugin-sdk/video-generation";
+import { AIMLAPI_ATTRIBUTION_HEADERS } from "./runtime-api.js";
 
 const AIMLAPI_VIDEO_API_BASE_URL = "https://api.aimlapi.com";
 const AIMLAPI_VIDEO_GENERATIONS_PATH = "/v2/video/generations";
@@ -211,6 +212,7 @@ export function buildAimlapiVideoGenerationProvider(): VideoGenerationProvider {
           defaultHeaders: {
             Authorization: `Bearer ${auth.apiKey}`,
             "Content-Type": "application/json",
+            ...AIMLAPI_ATTRIBUTION_HEADERS,
           },
           provider: "aimlapi",
           capability: "video",

@@ -1,6 +1,15 @@
 import type { ModelDefinitionConfig, ModelProviderConfig } from "openclaw/plugin-sdk/provider-onboard";
 
 export const AIMLAPI_BASE_URL = "https://api.aimlapi.com/v1";
+/**
+ * Partner attribution sent on every AI/ML API request (inference, catalog
+ * discovery, video generation, web search) - registered via
+ * `POST /v3/rebate-partners` (partnerName: "openclaw").
+ */
+export const AIMLAPI_ATTRIBUTION_HEADERS = {
+  "X-AIMLAPI-Source": "agent/openclaw",
+  "X-AIMLAPI-Partner-ID": "part_xKZeoMXjy4GOKOqmmziVxWcX",
+} as const;
 export const AIMLAPI_DEFAULT_MODEL_ID = "openai/gpt-5-nano-2025-08-07";
 export const AIMLAPI_DEFAULT_MODEL_REF = `aimlapi/${AIMLAPI_DEFAULT_MODEL_ID}`;
 export const AIMLAPI_DEFAULT_MODEL_NAME = "GPT-5 Nano (2025-08-07)";
@@ -119,7 +128,7 @@ export async function discoverAimlapiModels(): Promise<ModelDefinitionConfig[]> 
     try {
       const response = await fetch(`${AIMLAPI_BASE_URL}/models`, {
         signal: AbortSignal.timeout(25_000),
-        headers: { accept: "application/json" },
+        headers: { accept: "application/json", ...AIMLAPI_ATTRIBUTION_HEADERS },
       });
       if (!response.ok) {
         return resolveAimlapiStaticFallback();

@@ -20,6 +20,7 @@ import {
   writeCachedSearchPayload,
 } from "openclaw/plugin-sdk/provider-web-search";
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
+import { AIMLAPI_ATTRIBUTION_HEADERS } from "../runtime-api.js";
 
 const DEFAULT_AIMLAPI_BASE_URL = "https://api.aimlapi.com/v1";
 const DEFAULT_AIMLAPI_MODEL = "perplexity/sonar-pro";
@@ -120,6 +121,7 @@ async function hasReusableAimlapiProviderAuth(config: OpenClawConfig): Promise<b
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...AIMLAPI_ATTRIBUTION_HEADERS,
       },
       body: "",
       signal: AbortSignal.timeout(10_000),
@@ -223,6 +225,7 @@ async function runAimlapiSearch(params: {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${params.apiKey}`,
+          ...AIMLAPI_ATTRIBUTION_HEADERS,
         },
         body: JSON.stringify({
           model: params.model,
