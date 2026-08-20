@@ -9,6 +9,7 @@
       "provider": "aimlapi",
       "method": "api-key",
       "choiceId": "aimlapi-api-key",
+      "appGuidedSecret": true,
       "choiceLabel": "AI/ML API key",
       "groupId": "aimlapi",
       "groupLabel": "AI/ML API",
