@@ -8,6 +8,7 @@ import { takeGraphemes } from "../lib/graphemes.ts";
 
 const PROVIDER_ICON_NAMES = new Set([
   "abacus",
+  "aimlapi",
   "alibaba",
   "amp",
   "antigravity",
@@ -89,6 +90,7 @@ const PROVIDER_ICON_ALIASES: Readonly<Record<string, string>> = {
 
 // Brand display names for provider ids whose title-cased id reads wrong.
 const PROVIDER_DISPLAY_LABELS: Readonly<Record<string, string>> = {
+  aimlapi: "AI/ML API",
   anthropic: "Anthropic",
   google: "Google",
   "github-copilot": "GitHub",
