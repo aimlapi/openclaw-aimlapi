@@ -10,9 +10,9 @@ export const AIMLAPI_ATTRIBUTION_HEADERS = {
   "X-AIMLAPI-Source": "agent/openclaw",
   "X-AIMLAPI-Partner-ID": "part_xKZeoMXjy4GOKOqmmziVxWcX",
 } as const;
-export const AIMLAPI_DEFAULT_MODEL_ID = "openai/gpt-5.6-terra-pro";
+export const AIMLAPI_DEFAULT_MODEL_ID = "openai/gpt-5.6-terra";
 export const AIMLAPI_DEFAULT_MODEL_REF = `aimlapi/${AIMLAPI_DEFAULT_MODEL_ID}`;
-export const AIMLAPI_DEFAULT_MODEL_NAME = "GPT-5.6 Terra Pro";
+export const AIMLAPI_DEFAULT_MODEL_NAME = "GPT-5.6 Terra";
 export const AIMLAPI_DEFAULT_CONTEXT_WINDOW = 128000;
 export const AIMLAPI_DEFAULT_MAX_TOKENS = 16384;
 export const AIMLAPI_DEFAULT_COST = {
