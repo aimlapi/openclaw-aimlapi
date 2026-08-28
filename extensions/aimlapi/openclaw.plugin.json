@@ -1,6 +1,8 @@
 {
   "id": "aimlapi",
   "name": "AI/ML API Provider",
+  "description": "Chat, model discovery, video generation, and web search through AI/ML API — one key, 300+ models.",
+  "icon": "https://cdn.prod.website-files.com/65b8f36fa600366bc7cf9a67/68823171a2a0e523e03b0752_Logo%20Icon.png",
   "providers": ["aimlapi"],
   "providerAuthEnvVars": {
     "aimlapi": ["AIMLAPI_API_KEY"]
