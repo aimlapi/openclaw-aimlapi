@@ -1,6 +1,6 @@
 {
   "name": "@aimlapi/openclaw-provider",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "AI/ML API provider plugin for OpenClaw — chat, model discovery, video generation, and web search through a single API key.",
   "type": "module",
   "dependencies": {
@@ -21,6 +21,9 @@
     "build": {
       "openclawVersion": "2026.8.1",
       "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true
     }
   },
   "repository": {

@@ -7,6 +7,14 @@
   "providerAuthEnvVars": {
     "aimlapi": ["AIMLAPI_API_KEY"]
   },
+  "setup": {
+    "providers": [
+      {
+        "id": "aimlapi",
+        "envVars": ["AIMLAPI_API_KEY"]
+      }
+    ]
+  },
   "providerAuthChoices": [
     {
       "provider": "aimlapi",
