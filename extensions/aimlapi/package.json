@@ -1,8 +1,7 @@
 {
-  "name": "@openclaw/aimlapi-provider",
-  "version": "2026.3.14",
-  "private": true,
-  "description": "OpenClaw AIMLAPI provider plugin",
+  "name": "@aimlapi/openclaw-provider",
+  "version": "1.0.0",
+  "description": "AI/ML API provider plugin for OpenClaw — chat, model discovery, video generation, and web search through a single API key.",
   "type": "module",
   "dependencies": {
     "@sinclair/typebox": "0.34.48"
@@ -10,6 +9,24 @@
   "openclaw": {
     "extensions": [
       "./index.ts"
-    ]
-  }
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@aimlapi/openclaw-provider",
+      "npmSpec": "@aimlapi/openclaw-provider",
+      "defaultChoice": "clawhub"
+    },
+    "compat": {
+      "pluginApi": ">=2026.8.1"
+    },
+    "build": {
+      "openclawVersion": "2026.8.1",
+      "bundledDist": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aimlapi/openclaw-aimlapi"
+  },
+  "homepage": "https://aimlapi.com",
+  "license": "MIT"
 }
