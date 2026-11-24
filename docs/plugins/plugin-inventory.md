@@ -52,7 +52,7 @@ Each entry lists the package, distribution route, and description.
 
 ## Core npm package
 
-79 plugins
+80 plugins
 
 - **[a2a](/plugins/reference/a2a)** (`@openclaw/a2a`) - included in OpenClaw. A2A v1.0 Agent-to-Agent protocol channel plugin.
 
@@ -65,6 +65,8 @@ Each entry lists the package, distribution route, and description.
 - **[agent-guidance](/plugins/reference/agent-guidance)** (`@openclaw/agent-guidance`) - included in OpenClaw. Shares instruction files across selected agents without editing their workspace files.
 
 - **[agentsapi](/plugins/reference/agentsapi)** (`@openclaw/agentsapi`) - included in OpenClaw. OpenAI Agents API harness with hosted or self-hosted sessions.
+
+- **[aimlapi](/plugins/reference/aimlapi)** (`@openclaw/aimlapi-provider`) - included in OpenClaw. AI/ML API for OpenClaw: 300+ chat models, video generation, web search, the AI/ML API MCP server and agent skills through one API key.
 
 - **[alibaba](/plugins/reference/alibaba)** (`@openclaw/alibaba-provider`) - included in OpenClaw. Adds video generation provider support.
 

@@ -2242,6 +2242,7 @@
                     "group": "Chat and coding models",
                     "pages": [
                       "providers/abliteration",
+                      "providers/aimlapi",
                       "providers/alibaba",
                       "providers/anthropic",
                       "plugins/reference/anthropic-vertex",

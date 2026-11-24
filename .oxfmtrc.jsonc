@@ -42,6 +42,8 @@
     "dist/",
     "extensions/diffs/assets/viewer-runtime.js",
     "extensions/browser/chrome-extension/modules/copilot-runtime.js",
+    // Vendored copy of the @ai-ml.api/skills release; must stay byte-identical.
+    "extensions/aimlapi/skills/",
     // Knowledge vault fixtures are byte-exact record data, not authored prose.
     "extensions/knowledge/fixtures/",
     "extensions/knowledge/test-fixtures/",

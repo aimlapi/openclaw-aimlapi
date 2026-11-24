@@ -1,0 +1,101 @@
+{
+  "id": "aimlapi",
+  "name": "AI/ML API Provider",
+  "description": "AI/ML API for OpenClaw: 300+ chat models, video generation, web search, the AI/ML API MCP server and agent skills through one API key.",
+  "categories": [
+    "models"
+  ],
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "icon": "https://cdn.prod.website-files.com/65b8f36fa600366bc7cf9a67/68823171a2a0e523e03b0752_Logo%20Icon.png",
+  "providers": [
+    "aimlapi"
+  ],
+  "setup": {
+    "providers": [
+      {
+        "id": "aimlapi",
+        "envVars": [
+          "AIMLAPI_API_KEY"
+        ]
+      }
+    ]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "aimlapi",
+      "method": "api-key",
+      "choiceId": "aimlapi-api-key",
+      "appGuidedSecret": true,
+      "choiceLabel": "AI/ML API key",
+      "groupId": "aimlapi",
+      "groupLabel": "AI/ML API",
+      "groupHint": "Supports 300+ models via a single API key",
+      "optionKey": "aimlapiApiKey",
+      "cliFlag": "--aimlapi-api-key",
+      "cliOption": "--aimlapi-api-key <key>",
+      "cliDescription": "AI/ML API key"
+    }
+  ],
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "AI/ML API Search API Key",
+      "help": "AI/ML API key for web search (fallback: AIMLAPI_API_KEY env var).",
+      "sensitive": true
+    },
+    "webSearch.baseUrl": {
+      "label": "AI/ML API Search Base URL",
+      "help": "AI/ML API base URL override for web search."
+    },
+    "webSearch.model": {
+      "label": "AI/ML API Search Model",
+      "help": "AI/ML API model override for web search."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "contracts": {
+    "webSearchProviders": [
+      "aimlapi"
+    ],
+    "videoGenerationProviders": [
+      "aimlapi"
+    ]
+  },
+  "mcpServers": {
+    "aimlapi": {
+      "transport": "streamable-http",
+      "url": "https://mcp.aimlapi.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${AIMLAPI_API_KEY}"
+      }
+    }
+  },
+  "skills": [
+    "./skills"
+  ]
+}

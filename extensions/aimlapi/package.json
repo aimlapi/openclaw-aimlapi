@@ -1,0 +1,15 @@
+{
+  "name": "@openclaw/aimlapi-provider",
+  "version": "2026.11.8",
+  "private": true,
+  "description": "OpenClaw AI/ML API provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "@openclaw/plugin-sdk": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
