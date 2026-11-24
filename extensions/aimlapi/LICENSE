@@ -20,5 +20,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The agent-skills/ directory is a copy of @ai-ml.api/skills and is licensed under the
-Apache License 2.0; see agent-skills/LICENSE.
+The skills/ directory is a copy of @ai-ml.api/skills and is licensed under the
+Apache License 2.0; see skills/LICENSE.
