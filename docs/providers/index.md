@@ -25,6 +25,7 @@ Looking for chat channel docs (WhatsApp/Telegram/Discord/Slack/Mattermost (plugi
 ## Provider docs
 
 - [Abliteration](/providers/abliteration)
+- [AI/ML API (300+ models, one key)](/providers/aimlapi)
 - [Alibaba Model Studio](/providers/alibaba)
 - [Amazon Bedrock](/providers/bedrock)
 - [Amazon Bedrock Mantle](/providers/bedrock-mantle)
